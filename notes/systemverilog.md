@@ -237,4 +237,219 @@ ascend ='{4{8}}; //四个值全部为0
 descend = '{9,8,default:1};
 ```
 
+基本的数组操作:for和foreach
+
+在数组操作中使用for和foreach循环
+```systemverilog
+initial begin
+    bit [31:0] src[5],dst[5];
+    for(int i = 0;i<$size(src);i++)
+        src[i] = i;
+    foreach(dst[j])
+        dst[j] = src[j]*2; //dst的值是src的两倍
+    end
+```
+
+初始化并遍历多维数组
+```systemverilog
+int md[2][3] = '{'{1,2,3},'{4,5,6}}; //二维数组的初始化
+initial begin
+    $display("Initial value:");
+    foreach(md[i,j])  //这是正确的语法格式
+        $display("md[%0d][%0d] = %0d", i, j, md[i][j]);
+    $display("New value:");
+    md = '{'{7,8,9},'{3{32'd5}}}; //修改数组元素
+    foreach(md[i,j])
+        $display("md[%0d][%0d] = %0d", i, j, md[i][j]);
+end
+```
+
+```systemverilog
+initial begin
+    byte twoD[4][6];
+    foreach(twoD[i,j])
+        twoD[i][j] = i*10+j;
+
+    foreach(twoD[i]) begin //遍历第一个维度
+        $write("%2d: ", i);
+        foreach(twoD[,j]) //遍历第二个维度
+            $write("%0d ", twoD[i][j]);
+        $display("");
+    end
+end
+```
+
+### 基本的数组操作 ----复制和比较
+
+数组的复制和比较操作
+
+```systemverilog
+initial begin
+    bit [31:0] src[5] = '{1,2,3,4,5},
+               dst[5] = '{5,4,3,2,1};
+    
+    //两个数组的聚合比较
+    if(src == dst)
+        $display("src == dst");
+    else
+        $display("src!= dst");
+    dst = src; //复制src到dst
+    // 只改变一个元素的值
+    src[0] = 5;
+    //所有元素的值是否相等(否！)
+    $display("src == dst: %b", (src == dst)? "==":"!=");
+
+    //使用数组片段对第1-4个元素进行比较
+    $display("src[1:4] %s dst[1:4]",(src[1:4] == dst[1:4])? "==":"!=");
+end
+```
+
+同时使用位下标和数组下标
+
+```systemverilog
+initial begin
+    bit [31:0] arr[5] = '{5{5}};
+    $display(src[0],,src[0][0],,src[0][2:1]);
+    //使用位下标访问数组元素
+end
+```
+
+```systemverilog
+bit [3:0][7:0] bytes; //4个字节组装成32比特
+bytes = 32'hCafe_Data;
+$displayh(bytes,, //显示所有32比特
+          bytes[3],, //最高字节“CA” 两个h为一个字节
+          bytes[3][7]); //最高比特位“1”
+```
+
+合并/非合并混合数组的声明
+
+```systemverilog
+bit [3:0][7:0] barray [3];   //合并:3x32比特
+bit [31:0] lw = 32'h0123_4567; //字
+bit [7:0][3:0] nibbles;       //合并数组
+barray[0] = lw;
+barray[0][3] = 8'h01;
+barray[0][1][6] = 1'b1;
+nibbles = barray[0]; //非合并数组
+```
+
+合并数组和非合并数组的选择
+
+动态数组在声明时使用空的下标[]，即数组的宽度不在编译时给出而在程序运行时再指定
+
+数组最开始时是空的,所以你必须调用new[]操作符来分配空间,同时在方括号中传递数组宽度
+
+```systemverilog
+int dyn[],d2[]; //声明动态数组
+
+initial begin
+    dyn = new[5];  //分配5个元素
+    foreach(dyn[j]) dyn[j] = j; //对元素进行初始化
+    d2 = dyn;       //复制一个动态数组
+    d2[0] = 5;      //修改复制值
+    $display("dyn[0] = %0d, d2[0] = %0d", dyn[0], d2[0]);
+    dyn = new[20](dyn);    //分配20个整数值并进行复制
+    dyn = new [100];       //分配100个元素的数组,旧值将不存在
+    dyn.delete();          //删除所有元素
+end
+```
+
+### 队列
+
+队列结合了链表和数组的优点
+队列和链表相似,可以在一个队列中任何地方增加或者删除元素,这类操作在性能上的损失比动态数组小得多,因为动态数组需要分配新的数组并复制所有元素的值,队列与元素相似,可以通过索引实现对任意元素的访问,而不需要像链表那样去遍历目标元素之前的所有元素
+
+队列的操作
+
+```systemverilog
+int j = 1,
+    q2[$] = {3, 4},       // 队列的常量不需要使用“ ' ”
+    q[$] = {0, 2, 5};     // {0, 2, 5}
+
+initial begin
+    q.insert(1, j);       // {0, 1, 2, 5}    在 2 之前插入 1
+    q.insert(3, q2);      // {0, 1, 2, 3, 4, 5} 在 q 中插入一个队列①
+    q.delete(1);          // {0, 2, 3, 4, 5} 删除第 1 个元素
+end
+
+// 下面的操作执行速度很快
+q.push_front(6);          // {6, 0, 2, 3, 4, 5} 在队列前面插入
+j = q.pop_back;           // {6, 0, 2, 3, 4}    j = 5
+q.push_back(8);           // {6, 0, 2, 3, 4, 8} 在队列末尾插入
+j = q.pop_front;          // {0, 2, 3, 4, 8}    j = 6
+
+foreach (q[i])
+    $display(q[i]);       //                    打印整个队列
+
+q.delete();               // {}                 删除整个队列
+```
+
+```SystemVerilog
+// 例 2.20 队列操作
+int j = 1,
+    q2[$] = {3, 4},       // 队列的常量不需要使用“ ' ”
+    q[$] = {0, 2, 5};     // {0, 2, 5}
+
+initial begin
+    // 结果
+    q = {q[0], j, q[1:$]};      // {0, 1, 2, 5} 在 2 之前插入 1
+    q = {q[0:2], q2, q[3:$]};   // {0, 1, 2, 3, 4, 5} 在 q 中插入一个队列
+    q = {q[0], q[2:$]};         // {0, 2, 3, 4, 5} 删除第 1 个元素
+
+    // 下面的操作执行速度很快
+    q = {6, q};                 // {6, 0, 2, 3, 4, 5} 在队列前面插入
+
+    // ① 并不是所有的 SystemVerilog 仿真器都支持使用 insert() 对队列插入新值。
+
+    j = q[$];                   // 等同于 j = 5
+    q = q[0:$ - 1];             // {6, 0, 2, 3, 4} 从队列末尾取出数据
+    q = {q, 8};                 // {6, 0, 2, 3, 4, 8} 在队列末尾插入
+    j = q[0];                   // 等同于 j = 6
+    q = q[1:$];                 // {0, 2, 3, 4, 8} 从队列前面取出数据
+
+    q = {};                     // {} 删除整个队列
+end
+```
+
+### 关联数组
+
+关联数组采用在方括号中放置数据类型的形式来进行声明,例如[int]或[packet]
+
+关联数组的声明,初始化和使用
+
+```systemverilog
+initial begin
+    bit[63:0] assoc[bit[63:0]],idx = 1;
+
+    //对稀疏分布的元素进行初始化
+    repeat (64) begin
+        assoc[idx] = idx;
+        idx = idx << 1;
+    end
+
+    //使用foreach遍历数组
+    foreach(assoc[i])
+        $display("assoc[%0d] = %0d", i, assoc[i]);
+    
+    //使用函数遍历数组
+    // 使用 foreach 遍历数组
+    foreach (assoc[i])
+        $display("assoc[%h]=%h", i, assoc[i]);
+
+    // 使用函数遍历数组
+    if (assoc.first(idx))
+        begin                   // 得到第一个索引
+            do
+                $display("assoc[%h]=%h", idx, assoc[idx]);
+            while (assoc.next(idx)); // 得到下一个索引
+        end
+
+    // 找到并删除第一个元素
+    assoc.first(idx);
+    assoc.delete(idx);
+    $display("The array now has %0d elements", assoc.num);
+end
+
+```
 
