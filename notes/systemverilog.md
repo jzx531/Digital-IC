@@ -519,4 +519,86 @@ end
 原因是没有办法直接访问到第N个元素
 
 
+从一个关联数组中随机选取一个元素
 
+```systemverilog
+int aa[int],rand_idx,element_count;
+
+element = $urandom_range(aa.size() - 1);
+
+foreach(aa[i])
+    if(count++ == element) begin
+        rand_idx = i;
+        break;
+    end
+    $display("0d element aa[%0d] = %0d", rand_idx, aa[rand_idx]);
+```
+
+
+####  数组定位方法
+
+```systemverilog
+int f[6] = '{1,6,2,6,8,6};
+
+tq = q.min();
+tq = d.max();
+tq = f.unique();
+
+tq = d.find with(item > 3);
+tq.delete();
+foreach(d[i])
+  if(d[i] > 3)
+    tq.push_back(d[i]);
+
+tq = d.find_index with(item > 3);
+tq = d.find_first with(item > 99);
+tq = d.find_first_index with(item == 8);
+tq = d.find_last with(item == 4);
+tq = d.find_last_index with(item == 4);
+```
+
+数组定位方法
+
+```systemverilog
+int count,total,d[] = '{9 , 1 , 8 , 3 ,4 ,4};  
+
+count = d.sum_with(item > 7);// 2 ：{9，8}
+
+total = d.sum with((item > 7) * item);  // 17 = 9  + 8
+
+count = d.sum with(item < 8);
+
+```
+
+### 数组的排序
+
+```systemverilog
+
+int d [] = '{9 , 1 , 8 , 3 ,4 ,4};  
+d.reverse();
+d.sort();
+d.rsort();
+d.shuffle();
+
+struct packed {byte red,green,blue;} c[];
+
+initial begin
+    c = new[100];
+    foreach(c[i])
+        c[i] =$urandom;
+    c.sort with(item.red);
+
+    c.sort with({x.green,x.blue});
+
+end
+```
+
+使用数组定位方法建立计分板
+
+```systemverilog
+typedef struct packed
+{
+    bit[7:0]addr;
+    bit[7:0] pr;
+    
+}
