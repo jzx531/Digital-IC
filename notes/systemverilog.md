@@ -600,5 +600,245 @@ typedef struct packed
 {
     bit[7:0]addr;
     bit[7:0] pr;
-    
-}
+    bit[15:0] data;
+} Packet;
+
+Packet scb[$];
+
+function void check_addr(bit [7:0] addr);
+    int into[$];
+
+    intq = scb.find_index() with(item.addr == addr);
+    case(intq.size())
+    0: $display("Addr %h not found in scoreboard",addr);
+    1: scb.delete(intq[0]);
+    default:
+        $display("Error : Multiple hits for addr %h",addr);
+
+    endcase
+endfunction : check_addr
+
+```
+
+### 使用typedef 创建新的类型
+
+Verilog 中用户自定义的类型宏
+```verilog
+`define OPSIZE 8
+`define OPREG reg[`OPSIZE-1:0]
+
+`OPREG op_a,op_b;
+```
+
+```SystemVerilog
+parameter OPSIZE = 8;
+typedef reg[OPSIZE-1:0] opreg_t;
+
+opreg_t op_a,op_b;
+```
+
+uint的定义
+```SystemVerilog
+typedef bit [31:0] uint;
+typedef int unsigned uint; //等效的定义
+```
+
+
+用户自定义数组类型
+```systemverilog
+typedef int fixed_array5[5];
+fixed_array5 f5;
+
+initial begin
+    foreach(f5[i])
+        f5[i] = i;
+end
+```
+
+使用struct 创建新类型
+```SystemVerilog
+struct {bit[7:0] r,g,b;} pixel;
+
+typedef struct {bit[7:0] r,g,b;} pixel_s;
+pixel_s my_pixel;
+```
+
+对结构体进行初始化
+
+对struct 类型进行初始化
+
+```systemverilog
+
+initial begin 
+    typedef struct {
+        int a;
+        byte b;
+        shortint c;
+        int d;
+    }my_struct_s;
+
+    my_struct_s st = '{32'haaaa_aaaad,8'hbb,16'hcccc,32'hdddd_dddd};
+    $display("st.a = %0d, st.b = %0d, st.c = %0d, st.d = %0d", st.a, st.b, st.c, st.d);
+    end
+```
+
+创建可容纳不同类型的联合
+```SystemVerilog
+typedef union {int i ; real f;} num_u;
+num_u un;
+un.f = 0.0; //把数值设置为浮点形式
+
+```
+
+合并结构
+
+pixel使用三个数值,所以它占用了三个长字的存储空间,即使它实际只需要三个字节
+```SystemVerilog
+typedef struct packed {
+    bit[7:0] r;
+    bit[7:0] g;
+    bit[7:0] b;
+} pixel_p_s;
+
+pixel_p_s p;
+```
+
+### 类型转换
+
+静态转换
+
+在整型和实型之间进行静态转换
+```SystemVerilog
+int i;
+real r;
+
+i = int '(10.0 - 0.1); //转换为非强制的
+r = real '(42);
+```
+
+
+动态转换
+
+$cast动态转换函数允许对越界的数值进行检查
+
+流操作符
+
+```systemverilog
+initial begin
+    int h;
+    bit [7:0] b, g[4], j[4] = '{8'ha, 8'hb, 8'hc, 8'hd};
+    bit [7:0] q, r, s, t;
+
+    h = {>>{j}};                // 0a0b0c0d- 把数组打包成整型
+    h = {<<{j}};                // b030d050 位倒序
+    h = {<<byte{j}};            // 0d0c0b0a 字节倒序
+    g = {<<byte{j}};            // 0d,0c,0b,0a 拆分成数组
+    b = {<<{8'b0011_0101}};     // 1010_1100 位倒序
+    b = {<<4{8'b0011_0101}};    // 0101_0011 半字节倒序
+    {>>{q,r,s,t}} = j;          // 把 j 分散到四个字节变量里
+    h = {>>{t,s,r,q}};          // 把字节集中到 h 里
+end
+```
+
+
+也可以使用很多连接符来完成同样的操作
+
+数组元素会根据需要自动分配
+
+```SystemVerilog
+initial begin
+    bit [15:0] wq[$] = '{16'h1234, 16'h5678, 16'h9abc,16'ddef0};
+    bit [7:0] bq[$];
+
+    // 把字数组转换成字节数组
+    bq = {>>{wq}}; // 12 34 56 78
+
+    // 把字节数组转换成字数组
+    bq = {8'h98, 8'h76, 8'h54, 8'h32};
+    wq = {>>{bq}}; // 98 76 54 32
+end
+```
+
+流操作符也可用来将结构打包或者拆分到字节数组中
+
+```SystemVerilog
+initial begin
+  typedef struct {
+    int a;
+    byte b;
+    shortint c;
+    int d;
+  }my_struct_s;
+
+  my_struct_s st = '{32'haaaa_aaaad,8'hbb,16'hcccc,32'hdddd_dddd};
+
+  byte b[];
+
+  //将结构转换成字节数组
+  b = {>> {st}}; // aa aa aa aa bb cc cc dd dd dd dd
+
+  //将字节数组转换成结构
+  my_struct_s st2;
+  st2 = {>> {b}}; // st2.a = 32'haaaa_aaaad, st2.b = 8'hbb, st2.c = 16'hcccc, st2.d = 32'hdddd_dddd
+end
+```
+
+
+### 枚举类型
+
+enum {RED,BLUE,GREEN} color;
+
+```SystemVerilog
+// 创建代表 0,1,2 的数据类型
+typedef enum {INIT, DECODE, IDLE} fsmstate_e;
+fsmstate_e pstate, nstate;       // 声明自定义类型变量
+
+initial begin
+    case (pstate)
+        IDLE: nstate = INIT;     // 数据赋值
+        INIT: nstate = DECODE;
+        default: nstate = IDLE;
+    endcase
+    $display("Next state is %s",
+             nstate.name());     // 显示状态的符号名
+end
+```
+
+1. first() 返回第一个枚举常量
+2. last() 返回最后一个枚举常量
+3. next() 返回下一个枚举常量
+4. next(N) 返回以后第N个枚举常量
+5. prev() 返回前一个枚举 变量
+6. prev(N) 返回以前第N个枚举常量
+
+
+### 常量
+
+```SystemVerilog
+// 常量声明
+initial begin 
+    const byte colon = ":";
+end
+```
+
+字符串方法
+
+```SystemVerilog
+string s ;
+initial begin
+    s = "IEEE";
+    $display(s.getc(0));
+    $display(s.tolower());
+
+    s.putc(s.len()-1,"-");
+    s = s(s,"P1800");
+
+    $display(s.substr(2,5));
+
+    my_log($psprintf("s = %s %5d",s,42));
+end
+
+task my_log(string message);
+    $display("@%0t: %s", $time, message);
+endtask
+```
