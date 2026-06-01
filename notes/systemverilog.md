@@ -453,3 +453,70 @@ end
 
 ```
 
+使用带字符索引的关联数组
+
+```systemverilog
+
+int switch[string],min_address,max_address;
+initial begin
+    int i,r,file;
+    string s;
+    file = $fopen("switch.txt","r");
+    while(!$feof(file)) begin
+      r = $fscanf(file,"%s %d %d",s,i,r);
+      switch[s] = i;
+end
+$fclose(file);
+
+// 获取最小地址值
+min_address = switch["min_address"];
+
+// 获取最大地址值,缺省为1000
+if(switch.exists("max_address"))
+    max_address = switch["max_address"];
+else
+    max_address = 1000;
+
+//打印数组的所有元素
+foreach(switch[s])
+    $display("switch[%s] = %d", s, switch[s]);
+end
+
+```
+            
+### 数组方法
+
+```systemverilog
+
+    bit on[10];   //单比特数组
+    int total;   
+
+    initial begin
+    foreach(on[i])
+        on[i] = i;
+
+    //打印出单比特和
+    $display("on.sum = %0d", on.sum);
+
+    //打印出单比特和
+    $display("on.sum = %0d", on.sum + 32'd0);
+
+    // 由于 total 是 32 比特 变量，所以数组和也是32 比特
+    total = on.sum;
+    $display("total = %0d", total);
+
+    // 将数组和与一个32比特进行比较
+    if(on.sum >= 32'd5)
+    $display("sum has 5 or more bits");
+
+    // 使用带32bit有符号运算的with表达式
+    $display("on.sum with 32-bit signed addition = %0d", on.sum.with(32'sd0));
+end
+
+```
+
+如果想从一个关联数组中随机选取一个元素,需要逐个访问它之前的元素
+原因是没有办法直接访问到第N个元素
+
+
+
