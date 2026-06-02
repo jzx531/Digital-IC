@@ -842,3 +842,531 @@ task my_log(string message);
     $display("@%0t: %s", $time, message);
 endtask
 ```
+
+### 表达式的位宽
+
+```SystemVerilog
+bit [7:0] b8l;
+bit one = 1'b1;
+
+$display(one + one);  // A: 1+ 1 =0
+
+b8 = one + one;  // B: 1+ 1 = 2
+
+$display(b8);  // C: 2
+
+display(b8l);  // D: 2
+
+$display(b8l);  // E: 2
+
+```
+
+## 过程语句和子程序
+
+### 过程语句
+
+```SystemVerilog
+initial 
+    begin:example
+     integer array[10],sum,j;
+
+     // 在for语句中声明 i
+     for(int i = 0; i < 10; i++)
+        array[i] = i;
+
+     // 把数组里的元素相加
+     sum = array[9];
+     j = 8;
+     do                  // do 。。。 while循环
+        sum += array[j]; //累加
+     while(j --);  // 判断j = 0是否成立
+     $display("sum = %0d", sum); // 指定宽度
+     end : example //结束标识符
+
+```
+
+
+### 任务,函数 void函数
+
+如果有一个不消耗时间的SystemVerilog任务,应该把它定义成void函数,这种函数没有返回值,便于被任何其他任务或函数所调用
+
+```SystemVerilog
+function void print_state(...);
+    $display("@%0t:state = %s", $time, cur_state.name());
+endfunction
+```
+
+忽略函数的返回值
+```SystemVerilog
+void' ($fscanf(file, "%d",i));
+```
+
+### 任务和函数概述
+
+不带begin...end的简单任务
+```SystemVerilog
+task multiple_lines;
+    $display("Line 1");
+    $display("Line 2");
+endtask
+```
+
+### 子程序参数
+
+C语言风格的子程序参数
+
+```Verilog
+
+task mytask2;
+    output [31:0] x; //方向声明
+    reg [31:0] x; //类型声明
+    input y;
+    ....
+endtask
+```
+
+而在SystemVerilog,可以采用简明C语言风格
+
+```SystemVerilog
+task mytask3(output logic [31:0] x,input logic y);
+    ....
+endtask
+```
+
+
+Verilog对参数的处理方式很简单,在子程序开头把input和inout的值复制给本地变量,在子程序退出时则复制output和inout的值,除了标量以外,没有把任何存储器传递给Verilog子程序
+
+而SystemVerilog中，可以指定为引用而不是复制
+这种ref参数类型比input,output或inout更好用
+
+```SystemVerilog
+function void print_checksum(const ref bit [31:0] a[]);
+    bit [31:0] checksum = 0;
+    for(int i = 0 ;i < a.size(); i++)
+        checksum ^= a[i];
+    $display("Checksum = %0d", checksum);
+endfunction
+```
+
+ref还有好处: 在任务里可以修改变量而且修改结果对调用它的函数随时可见
+
+```SystemVerilog
+task bus_read(input logic [31:0] addr,
+              ref logic [31:0] data);
+
+    // 请求总线并驱动地址
+    bus.request = 1'b1;
+    @(posedge bus.grant) bus.addr = addr;
+
+    // 等待来自存储器的数据
+    @(posedge bus.enable) data = bus.data;
+
+    // 释放总线并等待许可
+    bus.request = 1'b0;
+    @(negedge bus.grant);
+endtask
+
+logic [31:0] addr,data;
+
+initial 
+    fork
+        bus_read(addr,data);
+        thread2:
+            begin 
+                @data //在数据变化时触发
+                $display("Data = %0d", data);
+            end
+    join
+```
+
+
+在SystemVerilog中,可以为参数指定一个缺省值,如果在调用时不指明参数(和cpp一样)
+
+```SystemVerilog
+task sticky (ref int array[50],int a,b);
+```
+
+此时int a,b的方向为ref与初始设计不符
+
+
+### 子程序的返回
+
+```SystemVerilog
+task load_array(int len, ref int array[]);
+    if(len < 0) begin
+        $display("Bad len");
+        return;
+    end
+
+    //任务中其余代码
+    ...
+endtask
+
+// 也可以用于函数返回
+function bit transmit(...);
+    // 发送处理
+    return ~ifc.cb.error; //返回状态: 0 = error
+endfunction
+```
+
+从函数中返回一个数组
+
+```SystemVerilog
+typedef int fixed_array5[5];
+fixed_array5 f5;
+
+function fixed_array5 init(int start);
+    foreach(init[i])
+        init[i] = start + i;
+endfunction
+
+initial begin
+    f5 = init(5);
+    foreach(f5[i])
+        $display("f5[%0d] = %0d", i, f5[i]);
+end
+
+```
+函数的返回值类型是 fixed_array5（一维数组）。在 SystemVerilog 中，当函数需要返回数组时，会隐式创建一个临时数组变量来承载返回值，这个临时变量的名字就是函数名 init。
+
+另一种方式时通过引用传递数组给函数
+
+```SystemVerilog
+function void init(ref int f[5],input int start);
+    foreach(f[i])
+        f[i] = start + i;
+endfunction
+
+```
+
+### 局部数据存储
+
+在SystemVerilog中,模块(module) 和 program块中的子程序缺省情况下仍然使用静态存储（局部变量和子程序参数被存放在共享的静态存储区,多线程之间会窜用局部变量）,如果使用自动存储,则必须在程序语句中加入automatic关键字
+
+```SystemVerilog
+program automatic test;
+    task wait_for_mem(input [31:0] addr,expect_data,output success);
+        while(bus.addr !== addr)
+            @(bus.addr);
+        success = (bus.data == expect_data);
+    endtask
+endprogram
+
+```
+
+如果没有修饰符automatic,由于第一次调用的任务处于等待状态,所以对wait_for_mem的第二次调用会覆盖它的两个参数
+
+修复静态初始化漏洞
+
+```SystemVerilog
+program automatic initialization; //漏洞被修复
+...
+endprogram
+```
+
+修复静态初始化的漏洞,把声明和初始化拆开
+```SystemVerilog
+logic [7:0] local_addr;
+local_addr = addr << 2;
+```
+
+### 时间值
+
+时间单位和精度
+
+SystemVerilog允许使用数值和单位来明确指定一个时间值,
+代码里可以使用类似0.1ns和20ps的时延,只要记得使用timeunit和timeprecesion或者`timescale即可
+
+你还可以通过使用经典的verilog时间函数$timeformat，$time和$realtime
+来使代码在时间标度上更清楚
+
+```SystemVerilog
+
+module timing;
+    timeunit 1ns;
+    timeprecision 1ps;
+    initial begin
+        $timeformat(-9,3,"ns",8);
+        #1 $display("%t",$realtime);// 1.000ns
+        #2ns $display("%t",$realtime);// 3.000ns
+        #0.1ns $display("%t",$realtime);// 3.100ns
+        #41ps $display("%t",$realtime);// 3.141ns
+    end
+endmodule
+```
+
+使用实型变量real保存精确的数值，它们只在用作时延量的时候才被舍入
+
+时间变量及舍入
+
+```SystemVerilog
+`timescale 1ps/1ps
+module ps;
+    initial begin
+        real rdelay=800fs;          // 以 0.800 存储
+        time tdelay=800fs;          // 舍入后得到 1
+        $timeformat(-15,0,"fs",5);
+        #rdelay;                    // 时延舍入后得到 1ps
+        $display("%t",rdelay);      // "800fs"
+
+        #tdelay;                    // 再次延时 1ps
+        $display("%t",tdelay);      // "1000fs"
+    end
+endmodule
+```
+
+系统任务$time的返回值是一个根据所在模块的时间精度要求进行舍入的整数,不带小数的部分,而$realtime的返回值则是一个带小数部分的完整实数
+
+
+## 连接设计和测试平台
+
+由于verilog的端口描述繁琐,代码会长达数页
+
+使用端口的仲裁器模型
+
+```SystemVerilog
+module arb_port(output logic [1:0] grant,
+                input logic [1:0] request,
+                intput logic rst,
+                input logic clk);
+    always @(posedge clk or posedge rst) begin
+    if(rst)
+        grant <= 2'b00;
+    else
+        ...
+    end
+endmodule
+```
+
+测试平台定义在另一个模块中,与设计所在的 模块相互独立
+
+```SystemVerilog
+module test (input logic [1:0] grant,
+             output logic [1:0] request,
+             output logic rst,
+             input logic clk);
+
+    initial begin
+        @(posedge clk) request <= 2'b01;
+        $display("@%0t: Drove req=01", $time);
+        repeat (2) @(posedge clk);
+        if (grant != 2'b01)
+            $display("@%0t: a1: grant!=2'b01", $time);
+        ...
+        $finish;
+    end
+
+endmodule
+```
+
+顶层网单连接了测试平台和DUT
+没有接口的顶层网单
+
+```SystemVerilog
+module top;
+    logic [1:0] grant,request;
+    bit clk,rst;
+    always #5 clk = ~clk;
+
+    arb_port a1(grant,request,rst,clk);
+    test t1(grant,request,rst,clk);
+endmodule
+```
+
+### 接口
+
+对仲裁器的第一个改进就是将连线捆绑成一个接口
+
+```SystemVerilog
+interface arb_if(input bit clk);
+    logic [1:0] grant,request;
+    logic rst;
+endinterface
+```
+
+使用了简单接口的仲裁器
+```SystemVerilog
+module arb_port(arb_if arb);
+    always@(posedge arbif.clk or posedge arbif.rst)
+        begin
+            if(arbif.rst)
+                arbif.grant <= 2'b00;
+            else
+                arbif.grant <= arbif.request;
+        end
+    endmodule
+```
+
+使用简单仲裁器接口的测试平台
+```SystemVerilog
+module test(arb_if arbif)
+    initial begin
+        @(posedge arbif.clk) arbif.request <= 2'b01;
+        $display("@%0t: Drove req=01", $time);
+        if(arbif.grant != 2'b01)
+            $display("@%0t: a1: grant!=2'b01", $time);
+        $finish;
+    end
+endmodule : test
+```
+
+使用简单仲裁器接口的top模块
+```SystemVerilog
+module top; 
+    bit clk;
+    always #5 clk = ~clk;
+    arb_if arbif(clk);
+    arb a1(arbif);
+    test t1(arbif);
+endmodule : top
+```
+
+
+接口引入的 错误示范
+```SystemVerilog
+// 错误示例 (bad_test.sv)
+module bad_test(arb_if arbif); // 1. 这里引用了 arb_if
+    'include "MyTest.sv"       // 2. 合法的 include
+    'include "arb_if.sv"       // 3. 致命错误！
+endmodule
+```
+
+'include 的本质： 'include 并不是导入库，而是简单的 文本复制粘贴。编译器在处理时，会把 arb_if.sv 里的内容直接粘贴到 'include 这一行所在的位置。
+作用域冲突：
+当你把 arb_if.sv 放在 module bad_test ... endmodule 内部时，实际上你是在告诉编译器：“请在 bad_test 这个模块 里面 定义一个叫 arb_if 的接口。”
+这违反了语法规则。接口不能嵌套定义在模块内部。
+后果：
+    编译器会报错，因为它在模块内部看到了非法的 interface 关键字。
+即使某些宽松的编译器不报错，这个接口也会变成 bad_test 的局部变量，外部的其他模块根本无法通过端口列表连接到它。
+
+正确做法:
+
+```SystemVerilog
+// 正确做法 (good_test.sv)
+// 正确写法
+'include "arb_if.sv"      // 1. 先定义接口（此时处于全局作用域）
+
+module good_test(arb_if arbif); // 2. 现在可以使用 arb_if 作为端口类型了
+    'include "MyTest.sv"
+    // ... 逻辑代码
+endmodule
+```
+
+
+连接接口和端口
+
+如果不能符合对Verilog-2001的旧代码进行修改,将其中的端口改为接口
+可以将接口的信号直接连接到每个端口上
+连接接口到使用端口 的模块
+
+```SystemVerilog
+module top;
+    bit clk;
+    always #5 clk = ~clk;
+    arb_if arbif(clk);
+    arb_port a1(.grant(arbif.grant),.request(arbif.request),.rst(arbif.rst));
+
+    test t1(arbif);
+endmodule : top
+```
+
+使用modimport将接口中的信号分组
+
+在接口中使用modport结构能够将信号分组并指定方向
+```SystemVerilog
+interface arb_if(input bit clk);
+
+    logic [1:0] grant,request;
+    logic rst;
+
+    modport TEST(output request,rst,input grant,clk);
+    modport DUT(input request,rst,clk,output grant);
+    modport MONITOR(input request,grant,rst,clk);
+endinterface
+
+module arb (arb_if.DUT arbif);
+    ...
+endmodule
+
+module test (arb_if.TEST arbif);
+    ...
+endmodule
+```
+
+通过指定 .DUT，模块内部的 request 信号被强制视为 input，而 grant 被强制视为 output。这确保了 DUT 只能读取请求，不能误操作请求信号。
+
+创建接口监视模块
+
+```SystemVerilog
+module monitor (arb_if.MONITOR arbif);
+
+    always @(posedge arbif.request[0]) begin
+        $display("@%0t: request[0] asserted", $time);
+        @(posedge arbif.grant[0]);
+        $display("@%0t: grant[0] asserted", $time);
+    end
+
+    always @(posedge arbif.request[1]) begin
+        $display("@%0t: request[1] asserted", $time);
+        @(posedge arbif.grant[1]);
+        $display("@%0t: grant[1] asserted", $time);
+    end
+
+endmodule
+```
+
+
+### 激励时序
+
+带时钟的接口
+``` SystemVerilog
+
+interface arb_if(input bit clk);
+    logic [1:0] grant,request;
+    logic rst;
+
+    clocking cb @(posedge clk);//声明cb
+        output request;
+        input grant;
+    endclocking
+
+    modport TEST(clocking cb,output rst);
+    modport DUT(input request,rst,output grant);
+endinterface
+
+
+//这是一个简单的测试平台
+module test(arb_if.TEST arbif);
+    initial begin
+        arbif.cb.request <= 0;
+        @arbif.cb;
+        $display("@%0t: request=0", $time,arbif.cb.grant);
+    end
+endmodule
+```
+
+这行代码定义了一个名为 cb (Clocking Block) 的块，它绑定在 clk 信号的上升沿上。这意味着该块内的所有操作都将以 clk 为基准进行同步。
+
+虽然VMM中有一条规则指明将接口信号定义为wire,但是本书建议在接口中将信号定义为logic
+
+```SystemVerilog
+interface asynch_if();
+    logic l;
+    wire w;
+endinterface
+
+module test(asynch_if ifc);
+    logic local_wire;
+    assign ifc.w = local_wire;
+
+    initial begin
+        ifc.l <= 0;         // 直接驱动异步 logic 信号 ...
+
+        local_wire <= 1;    // 但是只能用 assign 驱动 wire 信号
+        ...
+    end
+endmodule
+```
+
+
+
