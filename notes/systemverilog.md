@@ -1368,5 +1368,404 @@ module test(asynch_if ifc);
 endmodule
 ```
 
+Verilog时序问题
 
+对设计输出信号的采样存在者相同的问题
+你可能知道下一个时钟将会出现在100ns的时候
+
+```SystemVerilog
+module memory(input wire start,write,
+              input wire [7:0] addr,
+              inout wire [7:0] data);
+ logic [7:0] mem[256];
+ always @(posedge start) begin
+    if(write)
+        mem[addr] <= data;
+    end
+endmodule
+
+module test(output logic start,write,
+            output logic [7:0] addr,data);
+    initial begin
+        start = 0; //信号初始化
+        write = 0;
+        #10; //短暂的延时
+        addr = 8'h42; //发起第一个指令
+        data = 8'h5a;
+        start = 1;
+        write = 1;
+    end
+endmodule
+```
+
+竞争状态出现在测试平台先产生start信号,然后再产生其他信号的时候
+内存被start信号唤醒的时候,write,addr,data信号仍然保留着原来的值
+可以使用非阻塞赋值将所有这些信号都做一个细微延迟
+
+对设计输出信号的采样存在着同样的问题，希望在时钟有效沿到来的之前的最后时刻捕获这些信号的值,你可能知道下一个时钟沿会出现在100ns的时候
+你不能在100ns出现时钟边沿的时候采样，因为设计的输出值可能已经改变了,应当在时钟到达之前的testup时间上采样
+
+
+程序块(Program Block) 和 时序区域(Timing Region)
+
+如果存在一种可以在时间轴上分开这些事件的方法
+
+根据定义,这些值是前一个时间片的最后值
+
+SystemVerilog在一个程序块中,跟模块非常相似:模块含有代码和变量,可以在
+其他模块中实例化,但是,程序不能有任何层次级别,例如模块的实例,接口或程序
+
+```SystemVerilog
+flowchart TD
+    Start([From previous time slot]) --> Active
+
+    subgraph CurrentTimeSlot [Current Time Slot]
+        direction TB
+        Active[Active<br>design] --> Observed
+        Observed[Observed<br>assertions] --> Reactive
+        Reactive[Reactive<br>testbench] --> Postponed
+    end
+
+    %% 循环逻辑
+    Reactive -.-> |Loop back if more events| Active
+    Observed -.-> |Loop back if more events| Active
+
+    Postponed[Postponed<br>sample] --> End([To next time slot])
+
+    style Active fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style Observed fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style Reactive fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style Postponed fill:#f9f9f9,stroke:#333,stroke-width:2px
+```
+
+1. 首先第一个时间片执行Active,在这个区域中运行设计事件,包括RTL门级代码和时钟发生器
+
+2. Observed区域,执行断言
+
+3. Reactive区域和Observed区域事件可以触发本周期内Active区域进一步设计事件
+
+4. Postponed区域将在时间片的最后，所有设计活动都结束后的只读时间段采样信号
+
+| 区域名 | 行为 |
+| :--- | :--- |
+| Active | 仿真模块中的设计代码 |
+| Observed | 执行 SystemVerilog 断言 |
+| Reactive | 执行程序中的测试平台部分 |
+| Postponed | 为测试平台的输入采样信号 |
+
+
+```SystemVerilog
+program automatic test(arb_if.TEST arbif);
+
+    initial begin
+        arbif.cb.request <= 2'b01;
+        $display("@%0t: Drove req=01", $time);
+        repeat(2) @arbif.cb;
+        if(arbif.cb.grant != 2'b01)
+            $display("@%0t: a1: grant!=2'b01", $time);
+        end
+endprogram : test
+```
+
+测试代码应当包含在一个单个的程序块中,应当使用OOP通过对象而非模块来创建一个动态,分层的测试平台
+
+如果使用了其他人的代码或者是把多个测试代码结合在一起,那么一次仿真就可能有多个程序块
+
+在Verilog中,仿真在调度事件存在的时候会继续执行,直到遇到$finish,
+SystemVerilog增加了一种结束仿真的方法,SystemVerilog把任何一个程序块都视作含有一个测试
+
+如果仅有一个程序块,那么当完成所有initial块中的最后一个语句时,仿真就结束了,因为编译器认为这就是测试的结尾
+
+即使还有模块或者程序库的线程在运行,仿真也会结束
+
+所以当测试结束的时候无需关闭所有的监视器或驱动器
+
+指定设计和测试平台之间的延迟
+
+### 1. 核心概念：默认时序
+
+文中提到：“时钟块的默认时序是在 `#1step` 延时之后采样输入信号，在 `#0` 延时之后驱动输出信号。”
+
+这意味着在仿真器处理一个时钟边沿（例如上升沿）时，时钟块会自动插入微小的时间偏移来保证顺序：
+
+- **输入采样（Input Sampling）**：
+  - **时机**：`#1step`（即前一个时间步长的最后时刻）。
+  - **对应区域**：Postponed Region（推迟区）。
+  - **作用**：在设计（DUT）根据当前时钟沿发生任何状态改变**之前**，先把接口上的信号值“拍个照”存下来。这样测试代码读取到的就是上一周期的稳定值，避免了读到 DUT 刚刚翻转产生的毛刺或中间态。
+- **输出驱动（Output Driving）**：
+  - **时机**：`#0`（即时钟沿发生的同一时刻）。
+  - **对应区域**：Active Region（活动区）。
+  - **作用**：测试平台想要发送的新数据，会在这个时刻同步地送到接口上，供 DUT 在同一个时钟沿进行采样。
+
+### 2. 图 4.5 解析：同步器的角色
+
+图中的结构展示了数据流向：
+
+- **Testbench (左侧)**：通过 `test out` 发送数据。
+- **Design Under Test (中间)**：接收 `in`，产生 `out`。
+- **Clocking Block (右侧方框)**：这是一个逻辑上的“同步器”。
+  - 它从 DUT 的输出端（`q`）采样数据，提供给 Testbench 读取（`test in`）。
+  - 它接收 Testbench 的驱动数据（`test out`），并在正确的时间点发送给 DUT 的输入端（`d`）。
+
+### 3. 为什么这样做？（解决竞争冒险）
+
+如果不使用时钟块，直接在 `always @(posedge clk)` 中读写信号，很容易出现 **竞争冒险（Race Condition）**：
+
+- **场景**：DUT 在时钟上升沿更新输出，而 Testbench 也在同一时刻去读取这个输出。
+- **风险**：由于仿真器执行顺序的不确定性，Testbench 可能读到旧值，也可能读到新值，导致验证结果不稳定。
+
+**时钟块的解决方案：**
+
+- 通过强制将 **采样动作** 提前到 `Postponed` 区域（上一个时间片末尾），确保读到的是绝对稳定的旧值。
+- 通过强制将 **驱动动作** 放在 `Active` 区域（当前时间片开始），确保 DUT 能按时收到新激励。
+
+![alt text](DUT_Sync.png)
+
+### 接口的驱动和采样
+
+使用Verilog的@ 和 wait 来同步测试平台中的信号
+
+```SystemVerilog
+program automatic test(bus_if.TB bus);
+    initial begin
+       @bus.cb;  //在时钟块的有效时钟沿继续
+       repeat (3) @bus.cb;  //等待3个时钟有效沿
+       @bus.cb.grant; //在任何边沿继续
+       @(posedge bus.cb.grant); //上升沿继续
+       @(negedge bus.cb.grant); //下降沿继续
+       wait(bus.cb.grant == 1); //等待表达式被执行,如果已经为真,不作任何延时
+       @(posedge bus.cb.grant or negedge bus.rst); // 等待几个信号
+    end
+endprogram
+```
+
+接口信号采样
+
+从时钟模块中读取一个信号的时候,在时钟沿之前得到采样值,例如在Postponed区域,下面的代码给出从一个DUT中读取grant同步信号的程序块
+
+arb在一个时钟周期的中间产生grant信号的值1和2,然后在时钟沿产生值3
+
+```SystemVerilog
+`timescale 1ns/1ns
+program test(arb_if.TEST arbif);
+    initial begin
+        $monitor("@%0t: grant=%0d", $time, arbif.cb.grant);
+
+        $ 50ns $display("End of TEST");
+        end
+    endprogram
+
+module arb(arb_if.DUT arbif);
+    initial begin
+        # 7 arbif.grant = 1; // @ 7ns
+        # 10 arbif.grant = 2; // @ 17ns
+        # 8 arbif.grant = 3; // @ 25ns
+    end
+endmodule
+```
+
+![alt text](SyncTiming.png)
+
+arbif.cb.grant在时钟边沿到来之前获得数值,当接口的输入信号恰好在时钟边沿25ns变化的时候,信号的新值并不是在下一个时钟周期传递给测试平台
+
+接口信号驱动
+
+```SystemVerilog
+program automatic test(arb_if.TEST arbif);
+    arbif.cb.request <= 2'b01;
+    $display("@%0t: Drove req=01", $time);
+    repeat(2) @arbif.cb;
+    if(arbif.cb.grant != 2'b01)
+        $display("@%0t: a1: grant!=2'b01", $time);
+    end
+endprogram : test
+```
+
+挡在时钟模块中使用modport时候,任何同步接口信号都必须加上接口(arbif)和时钟快名(cb)的前缀
+
+通过时钟块驱动接口信号
+
+接口中的双向信号
+
+程序和接口中的双向信号
+
+```SystemVerilog
+interface master_if (input bit clk);
+    wire [7:0] data; //双向信号
+    clocking cb @(posedge clk);
+        inout data;
+    endclocking
+    modport TEST(clocking cb);
+endinterface
+
+program test(master_if mif);
+    initial begin
+       mif.cb.data<='z;
+       @mif.cb;
+       $display(mif.cb.data); //从总线读取
+       @mif.cb;
+       mif.cb.data <= 7'h5a; // 驱动总线
+       @mif.cb;
+       mif.cb.data <='z; // 读取总线
+    end
+endprogram
+
+```
+
+SystemVerilog程序比Verilog更接近C程序
+拥有一个或更多程序入口
+
+一个always块可能从仿真的开始就会在每个时钟上升沿触发
+一个测试平台的执行过程经过初始化,驱动和响应设计行为等步骤后结束仿真
+
+当program 中最后一个initial块结束的时候,仿真实际上也就默认结束了
+
+如果确实需要always块，可以使用initial forever来完成
+
+时钟发生器
+不应该将时钟发生器放在程序块里
+
+以下为一个正确的时钟发生器
+```SystemVerilog
+module clock_generator(output bit clk);
+    initial
+    always #5 clk = ~clk; //在时间0之后生成时钟沿
+endmodule
+```
+所有时钟边沿都使用阻塞赋值生成,它们将在active区域触发事件的发生
+如果确实需要在0时刻产生一个时钟边沿,可以使用非阻塞赋值语句设置初始值,这样一来所有的时钟敏感逻辑电路比如always块都会在时钟变化之前执行
+
+
+### 将这些模块连接起来
+
+```SystemVerilog
+module top;
+    bit clk;
+    always #4 clk = ~clk; // 4ns周期的时钟
+
+    arb_if arbif(.*);
+    arb a1(.*);
+    test t1(.*);
+endmodule : top
+```
+
+快捷符号.*(隐式端口连接),能自动在当前级别自动连接模块实例的端口到具体信号,只要端口和信号的名字和数据类型相同
+
+端口列表中的接口必须连接
+
+SystemVerilog编译器不会让你成功编译任何一个端口列表中含有接口的模块或程序块
+
+```SystemVerilog    
+module uses_a_port(inout bit not_connected);
+...
+endmodule
+```
+
+端口列表中的接口必须连接
+
+SystemVerilog编译器不会让你成功编译任何一个在端口列表中含有接口的模块或者程序块
+
+
+### 1. 普通信号 vs 接口对象的区别
+
+文中首先做了一个对比，帮助理解为什么接口比较特殊。
+
+- **普通信号（如 `bit`, `wire`）**：
+    - 如果你定义了一个模块 `module uses_a_port(inout bit not_connected);`，即使你在上层模块例化它时不连接任何信号（悬空），或者只是声明了模块本身，编译器通常也能通过。因为对于普通信号，编译器可以自动推断并创建一个空的连线（Net）。
+- **接口（Interface）**：
+    - 接口不仅仅是一根线，它是一个包含了信号、任务、函数甚至时钟块（Clocking Block）的复杂对象。
+    - 如果模块定义为 `module uses_an_interface(arb_ifc.DUT ifc);`，这里的 `ifc` 是一个指向接口实例的句柄（Handle）。
+    - **关键点**：编译器无法凭空“捏造”一个接口实例。它必须知道这个接口具体连到了哪里，里面包含了什么具体的信号和时序逻辑。因此，**必须在例化时显式地连接一个已经存在的接口实例**。
+
+### 2. 代码示例解析
+
+#### 例 4.29（错误示范）
+
+```systemverilog
+// 这是一个错误的写法，或者说是不完整的写法
+module uses_an_interface(arb_ifc.DUT ifc);
+    initial ifc.grant = 0;
+endmodule
+```
+
+- 这里定义了模块 `uses_an_interface`，它需要一个类型为 `arb_ifc.DUT` 的接口 `ifc`。
+- 如果在顶层模块中只是声明了这个模块，而没有给它传具体的接口进去，编译器就会报错：“缺少必要的 modports”或“未连接的接口端口”。因为它不知道 `ifc` 到底是谁，也就无法解析 `ifc.grant` 是什么。
+
+#### 例 4.30（正确做法）
+
+这是标准的 SystemVerilog 验证环境搭建方式：
+
+1. **顶层模块 (Top Module)**：作为所有组件的容器。
+2. **实例化接口**：`arb_ifc ifc(clk);`
+    - 首先在顶层创建了一个真实的接口实例 `ifc`，并把时钟 `clk` 传给它（用于接口内部的时钟块同步）。
+3. **实例化被测模块/组件**：`uses_an_interface u1(ifc);`
+    - 在例化 `u1` 时，将上面创建好的接口实例 `ifc` 传递进去。
+    - 这样，模块 `u1` 内部的 `ifc` 就真正指向了顶层的那个物理接口，所有的信号交互才能正常进行。
+
+```systemverilog
+module top;
+    bit clk;
+    always #10 clk = !clk;
+
+    arb_ifc ifc(clk); //带有时钟块的接口
+    uses_an_interface u1(ifc); //必须这样定义才能被编译
+endmodule
+```
+
+### 顶层作用域
+
+在仿真过程中创建程序或者模块之外的对象,以便参与仿真的所有对象都可以访问它们
+
+在Verilog中只有宏定义可以跨越模块的边界，而且经常被用创建全局变量
+
+SystemVerilog引入了编译单元(compilation unit),它是一起编译的源文件的组合
+任何module,macromodule,interface,program,package或者primitive边界之外的作用域都被称为编译单元作用域,也称为$unit
+
+这个作用域内的任何成员,比如parameter都类似于全局成员,因为它可以被所有低一级的块访问,但是它们又不同于真正的全局成员
+
+本书将块外作用域称为"顶层作用域"，在这个作用域内你可以定义变量,参数,数据类型甚至方法
+
+```SystemVerilog
+//root.sv
+`timescale 1ns/1ns
+parameter int TIMEOUT = 1_000_000;
+const string time_out_msg = "ERROR: Timeout";
+
+module top;
+    test t1();
+endmodule
+
+program automatic test;
+    initial begin
+        $display("%s",time_out_msg);
+        $finish;
+    end
+endprogram
+```
+
+使用$root的跨模块的引用
+```SystemVerilog
+`timescale 1ns/1ns
+parameter TIMEOUT = 1_000_000;
+top t1(); //顶层模块的显式例化
+
+module top;
+    bit clk;
+    test t1(.*);
+endmodule
+
+`define TOP $root.top
+program automatic test;
+    initial begin
+     //绝对引用
+        $display("clk = %b",$root.top.clk);
+        $display("clk = %b",`top.clk); //使用宏
+        //相对引用
+        $display("clk = %b",top.clk);
+endprogram
+```
+top t1();：这是整段代码中最关键的一行。 它在顶层作用域直接实例化了 module top，并将其命名为 t1。
+为什么需要这一行？ 如果没有这一行，设计中就没有名为 t1 的实例存在。后续的 test 程序试图去访问 top.clk 或  $ root.top.clk 时，会因为找不到路径而报错。这一行建立了从“根”到“设计模块”的物理连接。
+
+### 程序--模块交互
 
