@@ -1769,3 +1769,369 @@ top t1();：这是整段代码中最关键的一行。 它在顶层作用域直�
 
 ### 程序--模块交互
 
+程序块可以读写模块中的所有信号,可以调用模块中的所有例程,但是模块却看不到程序块,因为测试平台需要访问和控制设计,但是设计却独立于测试平台
+
+程序可以调用模块中的例程来执行不同的动作,这个例程可以改变内部信号的值,这也称为后门
+
+在测试平台中使用函数从DUT获取信息是一个好办法
+在大多数情况下读取信号是可行的,但是如果设计代码变化,测试平台就可能错误的解释数值
+
+### System Verilog断言
+
+可以使用SystemVerilog断言(SVA) 在你的设计中创建时序断言
+断言的例化跟其他设计块的例化相似,而且在整个仿真过程中都是有效的
+
+立即断言
+测试平台的过程代码可以检查待测设计的信号值和测试平台的信号值
+并且在存在问题的时候采取相应的行动,例如产生了总线请求,就期望在两个时钟周期后产生应答
+
+```SystemVerilog
+bus.cb.request<=1;
+repeat (2) @bus.cb;
+if(bus.cb.grant != 2'b01)
+    $display("Error,grant!= 1");
+//测试平台剩余部分
+```
+
+```SystemVerilog
+bus.cb.request <= 1;
+repeat (2) @bus.cb;
+a1: assert (bus.cb.grant == 2'b01);
+```
+
+```SystemVerilog
+bus.cb.request <= 1;
+repeat(2) @bus.cb;
+a1 : assert(bus.cb.grant == 2'b01);
+```
+
+一个立即断言有可选的then和else分句,如果你想改变默认的消息,可以添加自己的输出信息
+
+```SystemVerilog
+a1:assert(bus.cb.grant == 2'b01)
+else $error("Grant not asserted");
+```
+
+并发断言
+
+可以认为它是一个连续运行的模块,它为整个仿真过程检查信号的值
+需要在断言内指定一个采样时钟
+
+```SystemVerilog
+interface arb_if(input bit clk);
+    logic [1:0] grant,request;
+    logic rst;
+
+    property request_2state;
+        @(posedge clk) disable iff(rst);
+        $isunknown(request) == 0;
+    endproperty
+    assert_request_2state : assert property(request_2state);
+endinterface
+```
+@(posedge clk)：指定这是一个并发断言。它会在时钟 clk 的每一个上升沿进行采样和评估。
+disable iff(rst)：这是一个异常处理机制。当复位信号 rst 为高电平（有效）时，该断言会被暂时挂起/失效。因为在复位期间，信号处于 X 或 Z 状态是正常现象，不需要报错。
+$isunknown(request) == 0：使用了系统函数 $isunknown。如果 request 信号的任意一位是 X 或 Z，该函数返回 1；要求它等于 0，即强制规定 request 必须是一个确定的二值逻辑（0 或 1）。
+
+四端口ATM路由器
+
+```SystemVerilog
+module atm_router(
+    // 4 x Level 1 Utopia ATM layer Rx Interfaces (接收接口)
+    Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3,
+    Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3,
+    Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3,
+    Rx_en_0, Rx_en_1, Rx_en_2, Rx_en_3,
+    Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3,
+
+    // 4 x Level 1 Utopia ATM layer Tx Interfaces (发送接口)
+    Tx_clk_0, Tx_clk_1, Tx_clk_2, Tx_clk_3,
+    Tx_data_0, Tx_data_1, Tx_data_2, Tx_data_3,
+    Tx_soc_0, Tx_soc_1, Tx_soc_2, Tx_soc_3,
+    Tx_en_0, Tx_en_1, Tx_en_2, Tx_en_3,
+    Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3,
+
+    // 其他控制信号
+    rst, clk
+);
+
+    // 此处通常会有端口方向定义 (input/output) 和内部逻辑
+    // 由于图片仅展示了端口列表头部，后续内容未显示。
+
+    // 4 x Level 1 Utopia Rx Interfaces
+    output          Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3;
+    input [7:0]     Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3;
+    input           Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3;
+    output          Rx_en_0, Rx_en_1, Rx_en_2, Rx_en_3;
+    input           Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3;
+
+    // 4 x Level 1 Utopia Tx Interfaces
+    output          Tx_clk_0, Tx_clk_1, Tx_clk_2, Tx_clk_3;
+    output [7:0]    Tx_data_0, Tx_data_1, Tx_data_2, Tx_data_3;
+    output          Tx_soc_0, Tx_soc_1, Tx_soc_2, Tx_soc_3;
+    output          Tx_en_0, Tx_en_1, Tx_en_2, Tx_en_3;
+    input           Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3;
+
+    // 其他控制信号
+    input rst, clk;
+    ...①
+endmodule
+```
+
+```SystemVerilog
+// 例 4.1 未使用接口的顶层简单
+module top;
+    bit clk;
+
+    // 产生周期为 10ns (5+5) 的时钟信号
+    always #5 clk = !clk;
+
+    // 声明所有用于连接的线网信号
+    wire Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3,
+         Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3,
+         Rx_en_0, Rx_en_1, Rx_en_2, Rx_en_3,
+         Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3,
+         Tx_clk_0, Tx_clk_1, Tx_clk_2, Tx_clk_3,
+         Tx_soc_0, Tx_soc_1, Tx_soc_2, Tx_soc_3,
+         Tx_en_0, Tx_en_1, Tx_en_2, Tx_en_3,
+         Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3, rst;
+
+    wire [7:0] Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3,
+               Tx_data_0, Tx_data_1, Tx_data_2, Tx_data_3;
+
+    // 实例化 ATM 路由器设计模块 (DUT)
+    atm_router al(
+        Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3,
+        Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3,
+        Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3,
+        Rx_en_0, Rx_en_1, Rx_en_2, Rx_en_3,
+        Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3,
+        Tx_clk_0, Tx_clk_1, Tx_clk_2, Tx_clk_3,
+        Tx_data_0, Tx_data_1, Tx_data_2, Tx_data_3,
+        Tx_soc_0, Tx_soc_1, Tx_soc_2, Tx_soc_3,
+        Tx_en_0, Tx_en_1, Tx_en_2, Tx_en_3,
+        Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3,
+        rst, clk
+    );
+
+    // 实例化测试程序模块
+    test t1(
+        Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3,
+        Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3,
+        Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3,
+        Rx_en_0, Rx_en_1, Rx_en_2, Rx_en_3,
+        Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3,
+        Tx_clk_0, Tx_clk_1, Tx_clk_2, Tx_clk_3,
+        Tx_data_0, Tx_data_1, Tx_data_2, Tx_data_3,
+        Tx_soc_0, Tx_soc_1, Tx_soc_2, Tx_soc_3,
+        Tx_en_0, Tx_en_1, Tx_en_2, Tx_en_3,
+        Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3,
+        rst, clk
+    );
+
+endmodule
+```
+
+```SystemVerilog
+// 例 4.2 使用端口的测试平台 (Verilog-1995)
+module test(
+    // 4 x Level 1 Utopia ATM layer Rx Interfaces
+    Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3,
+    Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3,
+    Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3,
+    Rx_en_0, Rx_en_1, Rx_en_2, Rx_en_3,
+    Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3,
+
+    // 4 x Level 1 Utopia ATM layer Tx Interfaces
+    Tx_clk_0, Tx_clk_1, Tx_clk_2, Tx_clk_3,
+    Tx_data_0, Tx_data_1, Tx_data_2, Tx_data_3,
+    Tx_soc_0, Tx_soc_1, Tx_soc_2, Tx_soc_3,
+    Tx_en_0, Tx_en_1, Tx_en_2, Tx_en_3,
+    Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3,
+
+    // 其他控制信号
+    rst, clk
+);
+
+    // -------------------------------------------------------
+    // 4 x Level 1 Utopia Rx Interfaces (方向声明)
+    // -------------------------------------------------------
+    input           Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3;
+    output [7:0]    Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3;
+    reg [7:0]       Rx_data_0, Rx_data_1, Rx_data_2, Rx_data_3; // reg类型以支持赋值
+    output          Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3;
+    reg             Rx_soc_0, Rx_soc_1, Rx_soc_2, Rx_soc_3;
+    input           Rx_en_0, Rx_en_1, Rx_en_2, Rx_en_3;
+    output          Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3;
+    reg             Rx_clav_0, Rx_clav_1, Rx_clav_2, Rx_clav_3;
+
+    // -------------------------------------------------------
+    // 4 x Level 1 Utopia Tx Interfaces (方向声明)
+    // -------------------------------------------------------
+    input           Tx_clk_0, Tx_clk_1, Tx_clk_2, Tx_clk_3;
+    input [7:0]     Tx_data_0, Tx_data_1, Tx_data_2, Tx_data_3;
+    input           Tx_soc_0, Tx_soc_1, Tx_soc_2, Tx_soc_3;
+    input           Tx_en_0, Tx_en_1, Tx_en_2, Tx_en_3;
+    output          Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3;
+    reg             Tx_clav_0, Tx_clav_1, Tx_clav_2, Tx_clav_3;
+
+    // -------------------------------------------------------
+    // 其他控制信号 (方向声明)
+    // -------------------------------------------------------
+    output rst;
+    reg rst;
+    input clk;
+
+    initial begin
+        // 复位设备
+        rst = 1;
+        Rx_data_0 <= 0;
+        ...
+    end
+
+endmodule
+```
+
+ATM接口简化
+
+```SystemVerilog
+interface Rx_if(input logic clk);
+    logic [7:0] data;
+    logic soc,en,clav,rclk;
+
+    clocking cb @(posedge clk);
+        output data,soc,clav; // 方向是相对测试平台的
+        input en;
+    endclocking : cb
+
+    modport DUT(output en,rclk,
+               input data,soc,clav);
+
+    modport TB(clocking cb);
+endinterface : Rx_if
+```
+
+Tx接口
+
+```
+interface Tx_if(input logic clk);
+    logic [7:0] data;
+    logic soc,en,clav,tclk;
+
+    clocking cb @(posedge clk);
+        input data,soc,en;
+        output clav;
+    endclocking : cb
+
+    modport DUT(output soc,tclk,en,
+              input data,clav);
+    modport TB (clocking cb);
+endinterface : Tx_if
+```
+使用module atm_router(Rx_if.DUT Rx0,Rx1,Rx2,Rx3,
+    Tx_if.DUT Tx0,Tx1,Tx2,Tx3,
+    input logic clk,rst);
+endmodule
+
+
+使用接口的ATM顶层网单
+
+```SystemVerilog
+module top;
+    bit clk, rst;
+
+    // 产生周期为 10ns (5+5) 的时钟信号
+    always #5 clk = !clk;
+
+    // 实例化 4 个接收端接口 (Rx Interface)
+    Rx_if Rx0 (clk), Rx1 (clk), Rx2 (clk), Rx3 (clk);
+
+    // 实例化 4 个发送端接口 (Tx Interface)
+    Tx_if Tx0 (clk), Tx1 (clk), Tx2 (clk), Tx3 (clk);
+
+    // 实例化 ATM 路由器设计模块 (DUT)
+    // 注意：这里直接传递接口实例，而不是单独的信号线
+    atm_router a1 (
+        Rx0, Rx1, Rx2, Rx3,   // 或者仅使用 (.*) 进行自动端口匹配
+        Tx0, Tx1, Tx2, Tx3,
+        clk, rst
+    );
+
+    // 实例化测试平台模块 (Testbench)
+    test t1 (
+        Rx0, Rx1, Rx2, Rx3,   // 或者仅使用 (.*) 进行自动端口匹配
+        Tx0, Tx1, Tx2, Tx3,
+        clk, rst
+    );
+
+endmodule : top
+```
+
+使用接口的ATM测试平台
+
+接口中的名字都使用了固定名字,所以需要把同样的代码为4x4 ATM路由器复制四次
+
+```SystemVerilog
+program test(Rx_if.TB Rx0,Rx1,Rx2,Rx3,
+              Tx_if.TB Tx0,Tx1,Tx2,Tx3,
+              input logic clk,output logic rst);
+    bit [ 7:0] bytes[ATM_CELL_SIZE];
+    initial begin
+        //复位设备
+        rst <= 1;
+        Rx0.cb.data <= 0;
+        receive_cell0();
+        end
+
+    task receive_cell0();
+        @(Tx0.cb);
+        Tx0.cb.clav <=1;
+        wait(Tx0.cb.soc == 1);
+        for(int i = 0; i < ATM_CELL_SIZE; i++) begin
+            wait(Tx0.cb.en == 0);
+                @(Tx0.cb);
+            bytes[i] = Tx0.cb.data;
+
+            @(Tx0.cb);
+            Tx0.cb.clav <= 0;
+        end
+    endtask : receive_cell0
+endprogram : test
+```
+
+### ref端口的方向
+
+SystemVerilog引入了一种新的端口方向:ref
+你应该很熟悉input,output和inout端口方向了,其中inout用于建模双向连接
+
+如果使用多个inout端口驱动一个信号,SystemVerilog将会根据所有的驱动器的值,驱动强度来计算最终的值
+
+ref端口的行为完全不同,它其实是对变量的引用,它的值是该变量最后一次赋值
+如果将一个变量连接到多个ref端口,就可能产生竞争,因为多个模块的端口都可能更新同一个变量
+
+### 仿真的结束
+
+在最后一个initial块完成时,隐性调用$exit来标识程序的结束
+当所有程序块都退出了,$finish函数的隐形调用就结束了
+
+可以在需要的时候直接调用$finish来结束仿真
+
+模块或者程序可以定义一个或者多个final块来执行仿真器退出前的代码
+
+```SystemVerilog
+program test;
+    int errors,warnings;
+
+    initial begin
+    ......//程序块主要行为
+    end
+
+    final 
+        $display("Test done with %d errors and %d warnings",errors,warnings);
+    endprogram : test
+```
+
+### LC3取指模块的定向测试(directed test)
+
+
+
