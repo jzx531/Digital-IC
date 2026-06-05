@@ -2134,4 +2134,70 @@ program test;
 ### LC3取指模块的定向测试(directed test)
 
 
+![alt text](LC3.png)
+
+图 4.10 中的 fetch 模块计算从内存中取数的地址，它有下列输入：
+
+(1) clock, reset: 1 位。
+
+(2) br_taken: 1 位。通知 fetch 块遇到控制信号，所以 npc 的值需要从 pc+1 改变为由指令计算出的地址值 taddr (目标地址)。
+
+(3) taddr: 16 位。为分支或者跳转指令计算得到的目标地址。
+
+(4) state: 4 位。controller 块当前状态，比如 fetch, decode 等等。
+
+fetch 块有如下输出：
+
+(1) rd: 1 位。通知内存执行读操作。因为 memAccess 块在 ReadMemory、WriteMemory 和 IndirectAddressRead 状态时会驱动共享总线，所以在这些状态时该信号处于高阻态 (Z)。在所有其他状态，rd 的值为高阻。
+
+(2) pc: 16 位。程序计数器寄存器的当前值，即 PC_reg，在 rd 为高阻时其值为高阻。
+
+---
+
+#### 4.12 LC3 取指模块的定向测试 (directed test) 99
+
+(3) npc: 16 位，其值始终为 PC_reg + 1。
+
+在 clock 的上升沿，当 br_taken 为真时，taddr 送入 PC_reg；而当 br_taken 为假时，npc 送入 PC_reg。PC_reg 复位时为 16'h3000。所有信号都在同一个周期内更新。
+
+取指模块的 verilog 代码具有输入和输出端口。
+
+```SystemVerilog
+module fetch(clock,reset,state,pc,npc,rd,taddr,br_taken);
+    input clock,reset,br_taken;
+    input [15:0] taddr;
+    input [3:0] state;
+    output [15:0] pc,npc; //当前和下一个PC
+    output rd;
+
+    //略去受保护的代码
+endmodule
+```
+
+```SystemVerilog
+interface fetch_ifc(input bit clock);
+    logic reset,br_taken,rd;
+    logic [15:0] taddr;
+    cntrl_e state;
+
+    logic [15:0] pc,npc;
+
+    clocking cb @(posedge clock);
+        input pc,npc,rd;
+        output taddr,state,br_taken,reset;
+    endclocking //cb
+
+    modport TEST(clocking cb,output reset);
+
+    modport DUT(input clock,reset,br_taken,taddr,state,
+               output pc,npc,rd);
+
+    // 用于监控DUT信号
+    clocking cbm@(posedge clock);
+        input pc,npc,rd,taddr,state,br_taken;
+    endclocking //cbm
+    modport MONITOR(clocking cbm);
+endinterface : fetch_ifc
+```
+
 
