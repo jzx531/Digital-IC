@@ -2200,4 +2200,119 @@ interface fetch_ifc(input bit clock);
 endinterface : fetch_ifc
 ```
 
+取指模块的定向测试
+
+```SystemVerilog
+program automatic test(fetch_ifc.TEST if_t,fetch_ifc.MONITOR if_m);
+    initial begin
+        cntrl_e cntrl;
+
+        $timeformat(-9,0,"ns",5);
+        $monitor("time = %t, pc = %h, npc = %h, rd = %h, taddr = %h, state = %h, br_taken = %h, reset = %h", $time(), if_m.cbm.pc, if_m.cbm.npc, if_m.cbm.rd, if_m.cbm.taddr, if_m.cbm.state, if_m.cbm.br_taken, if_m.cbm.reset);
+        $display("%t:Reset all signals", $realtime);
+        if_t.reset<=1;
+        if_t.cb.taddr<= 16'hFFFC;
+        if_t.cb.br_taken <= 0;
+        if_t.cb.state <= CNTGRL_UPDATE_PC;
+
+        repeat(2) @if_t.cb;
+        pc_post_reset: assert(if_t.cb.pc == 16'h3000);
+
+            // --- 第一部分：复位与回绕测试 ---
+    #1 if_t.cb.reset <= 0; // 同步地释放复位信号
+
+    @(if_t.cb);
+    $display("\n\t: Test loading of target address", $realtime);
+    if_t.cb.state <= CNTRL_UPDATE_PC;
+    if_t.cb.br_taken <= 1;
+
+    @(if_t.cb);
+    @(if_t.cb);
+    pc_br_taken: assert (if_t.cb.pc == 16'hFFFC);
+
+    $display("%t: Did the PC rollover as expected?", $realtime);
+
+    // --- 第二部分：遍历控制器状态测试 ---
+    if_t.cb.br_taken <= 0;
+    if_t.cb.state <= CNTRL_UPDATE_PC;
+    repeat (5) @(if_t.cb);
+    pc_rollover: assert (if_t.cb.pc == 16'h0000);
+
+    $display("\n\t: Step through all the controller states", $realtime);
+    for (int i = CNTRL_FETCH; i <= CNTRL_COMPUTE_MEM; i++) begin
+        $cast(cntrl, i);
+        if (cntrl == CNTRL_UPDATE_PC) continue; // 跳过 UPDATE_PC，因为上面已经测过了
+
+        $display("%t: Try with controller state=%0d %s", $realtime, cntrl, cntrl.name);
+        $realtime; // 注意：原图此处可能有误，通常是打印时间或作为延时，这里按原文保留结构
+        if_t.cb.br_taken <= 0;
+        if_t.cb.state <= cntrl;
+        repeat (2) @(if_t.cb);
+        pc_no_load: assert (if_t.cb.pc == 16'h0001);
+    end // for i
+
+    // --- 第三部分：高阻态（Tristate）测试 ---
+    $display("\n\t: Tristate on PC output", $realtime);
+
+    if_t.cb.state <= CNTRL_READ_MEM;
+    @(if_t.cb);
+    pc_z_read_mem: assert (if_t.cb.pc === 16'hz);
+
+    if_t.cb.state <= CNTRL_IND_ADDR_RD;
+    @(if_t.cb);
+    pc_z_ind_addr_rd: assert (if_t.cb.pc === 16'hz);
+
+    if_t.cb.state <= CNTRL_WRITE_MEM;
+    @(if_t.cb);
+    pc_z_write_mem: assert (if_t.cb.pc === 16'hz);
+
+endprogram // test
+```
+
+```SystemVerilog
+`timescale 1ns / 1ns
+
+typedef enum(CNTRL_UPDATE_PC = 0,
+       CNTRL_FETCH = 1,
+       CNTRL_DECODE = 2,
+       CNTRL_EXECUTE = 3,
+       CNTRL_UPDATE_REGF = 4,
+       CNTRL_COMPUTE_PC =5,
+       CNTRL_COMPUTE_MEM = 6,
+       CNTRL_READ_MEM = 7,
+       CNTRL_IND_ADDR_RD = 8,
+       CNTRL_WRITE_MEM = 9) cntrl_e;
+
+    module top;
+        bit clock;
+        always #10 clock = ~clock;
+        fetch_ifc fif(clock);
+        test t1(fif,fif);
+        fetch f1(clock,fif.reset,fif.state,fif.pc,fif.npc,fif.rd,fif.taddr,fif.br_taken);
+    endmoudule //top
+```
+
+## 面向对象编程基础
+
+### 编写一个类
+
+类封装了数据和操作这些数据的子程序，这个数据包包含了地址，CRC和一个存储数值的数组,在Transaction类中有两个子程序:一个输出数据包地址的函数和一个计算循环冗余校验(CRC: cyclic redundancy check) 函数
+
+```SystemVerilog
+class Transaction;
+    bit [31:0] addr,crc,data[8];
+
+    function void display;
+       $display("Transaction: %h",addr);
+    endfunction
+
+    function void calc_crc;
+        crc = addr ^ data.xor;
+    endfunction
+
+endclass : Transaction
+```
+
+
+
 
