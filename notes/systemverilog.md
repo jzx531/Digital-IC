@@ -2313,6 +2313,92 @@ class Transaction;
 endclass : Transaction
 ```
 
+### OOP术语
+
+(1) **类 (class)**：包含变量和子程序的基本构建块。Verilog 中与之对应的是模块 (module)。
+
+(2) **对象 (object)**：类的一个实例。在 Verilog 中，你需要实例化一个模块才能使用它。
+
+(3) **句柄 (handle)**：指向对象的指针。在 Verilog 中，你通过实例名在模块外部引用信号和方法。一个 OOP 句柄就像一个对象的地址，但是它保存在一个只能指向单一数据类型的指针中。
+
+(4) **属性 (property)**：存储数据的变量。在 Verilog 中，就是寄存器 (reg) 或者线网 (wire) 类型的信号。
+
+(5) **方法 (method)**：任务或者函数中操作变量的程序性代码。Verilog 模块除了 initial 和 always 块以外，还含有任务和函数。
+
+(6) **原型 (prototype)**：程序的头，包括程序名、返回类型和参数列表。程序体则包含了执行代码。
+
+### 创建新对象
+
+Transaction tr; //声明一个句柄
+Tr = new(); //为一个Transaction 对象分配空间
+
+```SystemVerilog
+
+class Transaction;
+    logic [31:0] addr,crc,data[8];
+
+    function new;
+        addr = 3;
+        foreach (data[i])
+            data[i] = 5;
+    endfunction
+endclass
+```
+
+```SystemVerilog
+class Transaction;
+    logic [31:0] addr,crc,data[8];
+    function new(logic [31:0] a = 3,d = 5);
+        addr = a;
+        foreach(data[i])
+            data[i] = d;
+    endfunction
+endclass
+
+initial begin
+    Transaction tr;
+    tr = new(10);
+end
+
+```
+
+```SystemVerilog
+class Transaction;
+
+endclass : Transaction
+
+class Driver;
+    Transaction tr;
+    funtion new();
+        tr = new();
+    endfunction
+endclass : Driver
+```
+
+为对象创建一个句柄
+
+```SystemVerilog
+Transaction t1,t2; //声明两个句柄
+t1 = new(); // 为第一个Transaction 对象分配地址
+t2 = t1; // t1和t2都指向该对象
+t1 = new(); // 为第二个Transaction对象分配地址
+```
+
+### 对象的解除分配(deallocation)
+
+当最后一个句柄不再引用某个对象了
+SystemVerilog就释放该对象的空间
+
+```SystemVerilog
+Transaction t; //创建一个句柄
+t = new(); //分配一个新的Transaction
+t = new(); //分配第二个,并且释放第一个t
+t = null; //解除分配第二个
+```
+Verilog会自动回收垃圾
+
+### 使用对象
+
 
 
 
