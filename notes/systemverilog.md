@@ -2399,6 +2399,212 @@ Verilog会自动回收垃圾
 
 ### 使用对象
 
+```SystemVerilog
+Transaction t; //声明一个Transaction句柄
+t = new(); //创建一个Transaction对象
+t.addr = 32'h42; //设置变量的值
+t.display(); //调用一个子程序
+```
+
+### 静态变量和全局变量
+
+含有一个静态变量的类
+
+```SystemVerilog
+class Transaction;
+    static int count = 0;
+    int id;
+    function new()
+       id = count++;
+    endfunction
+endclass : Transaction
+
+Transaction t1,t2;
+initial begin
+    t1 = new();
+    t2 = new();
+    $display("second id = %0d",t2.id);
+end
+```
+
+
+通过类名访问静态变量
+
+```SystemVerilog
+class Transaction;
+    static int count = 0;
+endclass
+
+initial begin
+    run_test();
+    $display("%d transaction were created",Transaction::count);
+end
+```
+
+```SystemVerilog
+// 例 5.12 显示静态变量的静态方法
+
+class Transaction;
+    static Config cfg;
+    static int count = 0;
+    int id;
+
+    // 显示静态变量的静态方法
+    static function void display_statics();
+        $display("Transaction cfg.mode=%s, count=%0d",
+                 cfg.mode.name(), count);
+    endfunction
+endclass
+
+Config cfg;
+
+initial begin
+    cfg = new(MODE_ON);
+    Transaction::cfg = cfg;
+    Transaction::display_statics(); // 调用静态方法
+end
+```
+
+### 类的方法
+
+```SystemVerilog
+// 例 5.13 类中的方法
+
+class Transaction;
+    bit [31:0] addr, crc, data[8];
+
+    function void display();
+        $display("@%0t: TR addr=%h,crc=%h", $time, addr, crc);
+        $write("\tdata[0-7]=");
+        foreach (data[i]) $write(data[i]);
+        $display();
+    endfunction
+endclass
+
+class PCI_Tran;
+    bit [31:0] addr, data; // 使用真实的名字
+    function void display();
+        $display("@%0t: PCI: addr=%h,data=%h", $time, addr, data);
+    endfunction
+endclass
+
+Transaction t;
+PCI_Tran pc;
+
+initial begin
+    t = new(); // 创建一个 Transaction 对象
+    t.display(); // 调用 Transaction 的方法
+    pc = new(); // 创建一个 PCI 事务
+    pc.display(); // 调用 PCI 事务的方法
+end
+```
+
+### 在类之外定义方法
+
+```SystemVerilog
+// 例 5.14 块外方法声明
+
+class Transaction;
+    bit [31:0] addr, crc, data[8];
+    extern function void display();
+endclass
+
+function void Transaction::display();
+    $display("@%0t: Transaction addr=%h,crc=%h",
+             $time, addr, crc);
+    $write("\tdata[0-7]=");
+    foreach (data[i]) $write(data[i]);
+    $display();
+endfunction
+
+class PCI_Tran;
+    bit [31:0] addr, data; // 使用实名
+    extern function void display();
+endclass
+
+function void PCI_Tran::display();
+    $display("@%0t: PCI: addr=%h,data=%h",
+             $time, addr, data);
+endfunction
+```
+
+### 作用域规则
+
+名字作用域
+
+```SystemVerilog
+int limit; // $root.limit
+program automatic p;
+    int limit; // p.limit
+    class Foo;
+        int limit,array[]; ;//$root.p.limit
+
+        // $root.p.Foo.print.limit
+        function void print(int limit);
+            for(int i = 0; i < limit; i++)
+               $display("%m : array[%0d] = %0d", i, array[i]);
+        endfunction
+endclass
+
+initial begin
+    int limit = $root.limit;
+    Foo bar;
+    bar = new;
+    bar.array = new[limit];
+    bar.print(limit);
+    end
+endprogram
+```
+
+将类移入package来查找程序错误
+```SystemVerilog
+package Mistake;
+    class Bad;
+        logic [31:0] data[];
+
+        //未定义,不会编译
+        function void display;
+            for( i = 0; i< data.size(); i++)
+            $display("data[%0d] = %0d", i, data[i]);
+        endfunction
+    endclass
+endpackage
+
+program test;
+    int i;
+    import Mistake::* ;
+endprogram
+
+```
+
+```SystemVerilog
+// 例 5.20 Statistics 类的声明
+
+class Statistics;
+    time startT, stopT; // 事务的时间
+    static int ntrans = 0; // 事务的数目
+    static time total_elapsed_time = 0;
+
+    function time how_long;
+        how_long = stopT - startT;
+        ntrans++;
+        total_elapsed_time += how_long;
+    endfunction
+
+    function void start;
+        startT = $time;
+    endfunction
+endclass
+```
+
+在另外一个类中使用这个类
+
+
+
+
+
+
+
 
 
 
