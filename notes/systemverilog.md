@@ -2599,7 +2599,113 @@ endclass
 
 在另外一个类中使用这个类
 
+```SystemVerilog
+// 例 5.21 封装 Statistics 类
 
+class Transaction;
+    bit [31:0] addr, crc, data[8];
+    Statistics stats; // Statistics 句柄
+
+    function new();
+        stats = new(); // 创建 stats 实例
+    endfunction
+
+    task create_packet();
+        // 填充包数据
+        stats.start();
+        // 传送数据包
+    endtask
+endclass
+```
+
+编译顺序问题
+
+```SystemVerilog
+// 例 5.22 顺序编译
+typedef class Statistics; //定义低级别级
+
+class Transaction;
+    Statistics stats; //使用Statistics类
+endclass
+
+class Statistics; //定义Statistics类
+
+endclass
+
+```
+
+### 理解动态对象
+
+传递对象,SystemVerilog传递该标量的地址,所以方法可以修改标量变量的值,如果你不使用ref关键字,SystemVerilog将该变量的值复制到参数变量中
+
+```SystemVerilog
+task transmit(Transaction t);
+    CBbus.rx_data <= t.data;
+    t.stats.startT = $time;
+    ...
+endtask
+
+Transaction t;
+initial begin
+    t = new();
+    t.addr - 42; //初始化数值
+    transmit(t); //将对象传递给任务
+end
+```
+
+在任务中修改句柄
+```SystemVerilog
+// 例 5.21 封装 Statistics 类
+
+class Transaction;
+    bit [31:0] addr, crc, data[8];
+    Statistics stats; // Statistics 句柄
+
+    function new();
+        stats = new(); // 创建 stats 实例
+    endfunction
+
+    task create_packet();
+        // 填充包数据
+        stats.start();
+        // 传送数据包
+    endtask
+endclass
+```
+
+正确的产生器,创建多个对象
+```SystemVerilog
+// 例 5.23 产生器
+task generator_good(int n)
+    Transaction t;
+    repeat (n) begin
+        t = new(); //创建一个新对象
+        t.addr = $random; //随机赋值
+        $display("Transaction addr=%h", t.addr);
+        transmit(t);
+    end
+endtask
+```
+
+句柄数组
+在写测试平台的时候,可能需要保存并且引用许多对象,可以创建句柄数组,数组的每个元素指向一个对象
+
+```SystemVerilog
+// 例 5.24 句柄数组
+task generator();
+    transmit tarray[10];
+    foreach (tarray[i]) begin
+      begin
+        tarray[i] = new();
+        tarray[i].addr = $random;
+        $display("Transaction addr=%h", tarray[i].addr);
+        transmit(tarray[i]);
+      end
+endtask
+```
+
+
+### 对象的复制
 
 
 
