@@ -2854,6 +2854,30 @@ endclass
 ## 随机化
 
 
+带有随机变量的简单类
+
+```SystemVerilog
+class Packet;
+    //随机变量
+    randbit [31:0] src,dst,data[8];
+    randc bit [7:0] kind;
+    //.src 的约束
+    constraint c{
+        src > 0;
+        src < 15;
+    }
+
+endclass
+
+Packet p;
+    initial begin
+        p = new(); //产生一个包
+        assert(p.randomize());
+        else $fatal(0,"Packet::randomize failed");
+        transmit(p);
+    end
+```
+
 
 
 
