@@ -2878,6 +2878,170 @@ Packet p;
     end
 ```
 
+### 约束
+
+有用的激励并不仅仅是随机值——各个变量之间有着相互关系,否则仿真器可能需要很长时间才能产生需要的激励值,或者激励向量里会包含无效的值,需要用包含一个或多个约束表达式的约束块定义这些相关系
+
+```SystemVerilog
+// 例 6.3 受约束的随机类
+class Stim;
+    const bit [31:0] CONGEST_ADDR = 42;
+    typedef enum {READ, WRITE, CONTROL} stim_e;
+    randc stim_e kind;      // 枚举变量
+    rand bit [31:0] len, src, dst;
+    bit congestion_test;
+
+    constraint c_stim {
+        len < 1000;
+        len > 0;
+        if (congestion_test) {
+            dst inside {[CONGEST_ADDR-100 : CONGEST_ADDR+100]};
+            src == CONGEST_ADDR;
+        }
+        else
+            src inside {0, [2:10], [100:107]};
+    }
+endclass
+```
+固定顺序的约束
+```SystemVerilog
+// 例 6.4 固定顺序的约束
+class order;
+    rand bit [15:0] lo,med,hi;
+    constraint good{lo < med; med < hi;}
+endclass
+```
+```SystemVerilog
+// 例 6.8 动态改变权重
+// 总线操作:字节、字或长字
+class BusOp;
+    // 操作数长度
+    typedef enum {BYTE, WORD, LWRD} length_e;
+    rand length_e len;
+
+    // dist 约束的权重
+    bit [31:0] w_byte=1, w_word=3, w_lwrd=5;
+
+    constraint c_len {
+        len dist {BYTE := w_byte,   // 使用可变的权重
+                  WORD := w_word,   // 来选择随机的操作数长度
+                  LWRD := w_lwrd};
+    }
+endclass
+```
+
+集合成员和inside运算符
+```SystemVerilog
+rand int c;
+int lo,hi;
+constraint c_lohi {
+    c inside {[lo:hi]};
+}
+```
+
+```SystemVerilog
+// 例 6.8 动态改变权重
+// 总线操作:字节、字或长字
+class BusOp;
+    // 操作数长度
+    typedef enum {BYTE, WORD, LWRD} length_e;
+    rand length_e len;
+
+    // dist 约束的权重
+    bit [31:0] w_byte=1, w_word=3, w_lwrd=5;
+
+    constraint c_len {
+        len dist {BYTE := w_byte,   // 使用可变的权重
+                  WORD := w_word,   // 来选择随机的操作数长度
+                  LWRD := w_lwrd};
+    }
+endclass
+```
+
+```SystemVerilog
+// 例 6.10 使用"$"指定最大和最小值
+rand bit [6:0] b; // 0 <= b <= 127
+rand bit [5:0] e; // 0 <= e <= 63
+
+constraint c_range {
+    b inside {[$:4], [20:$]}; // 0 <= b <= 4 || 20 <= b <= 127
+    e inside {[$:4], [20:$]}; // 0 <= e <= 4 || 20 <= e <= 63
+}
+```
+
+```SystemVerilog
+// 例 6.11 (推测) 在 inside 约束中有重复的值
+class Weighted;
+    rand int val;
+    // 定义权重数组，数值出现的次数代表其权重
+    int array[] = '{1, 1, 2, 3, 5, 8, 8, 8, 8, 8};
+
+    constraint c {val inside array;}
+endclass
+
+Weighted w;
+
+initial begin
+    int count[9], maxx[$]; // count用于统计，maxx用于存储最大值
+    w = new();
+
+    repeat (2000) begin
+        assert(w.randomize());
+        count[w.val]++; // 统计值的个数
+    end
+
+    maxx = count.max(); // 获取最大统计值（用于归一化绘图）
+
+    // 输出值的分布
+    foreach(count[i])
+        if (count[i]) begin
+            $write("count[%0d]=%5d ", i, count[i]);
+            // 根据统计数量打印对应长度的星号条
+            repeat (count[i] * 40 / maxx[0]) $write("* ");
+            $display;
+        end
+end
+```
+
+集合里的每一个值取出来的概率都是相同的,即使值在数组中出现多次,可以把inside约束看成foreach约束
+
+```SystemVerilog
+// 例 6.16 从数组中取出随机值的类
+class Days;
+    // 定义枚举类型：一周七天
+    typedef enum {SUN, MON, TUE, WED, THU, FRI, SAT} days_e;
+
+    // 定义一个动态数组，用于存储可选的枚举值
+    days_e choices[$];
+
+    // 声明随机变量
+    rand days_e choice;
+
+    // 约束：choice 的值必须在 choices 数组包含的范围内
+    constraint cday {choice inside choices;}
+endclass
+
+// 例 6.17 从数组中取出随机值
+initial begin
+    Days days;
+    days = new();
+
+    // 场景 1：只选择周末
+    // 将数组赋值为 SUN 和 SAT
+    days.choices = {Days::SUN, Days::SAT};
+    assert (days.randomize());
+    $display("Random weekend day %s\n", days.choice.name);
+
+    // 场景 2：只选择工作日
+    // 重新赋值数组为周一到周五
+    days.choices = {Days::MON, Days::TUE, Days::WED,
+                    Days::THU, Days::FRI};
+    assert (days.randomize());
+    $display("Random week day %s", days.choice.name);
+end
+```
+
+
 
 
 
