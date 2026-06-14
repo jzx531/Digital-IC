@@ -2707,6 +2707,151 @@ endtask
 
 ### 对象的复制
 
+使用new操作符复制一个对象
+
+```SystemVerilog
+class Transaction;
+    bit [31:0] addr,crc,data[8];
+endclass
+
+Transaction src,dst;
+initial begin
+    src = new;
+    dst = new src; //使用new操作符进行复制
+end
+```
+
+使用new操作符复制一个复杂类
+
+// 例 5.30 使用 new 操作符复制一个复杂类
+
+class Transaction;
+    bit [31:0] addr, crc, data[8];
+    static int count = 0;
+    int id;
+    Statistics stats;      // 指向 Statistics 对象的句柄
+
+    function new;
+        stats = new();     // 构造一个新的 Statistics 对象
+        id = count++;
+    endfunction
+endclass
+
+Transaction src, dst;
+
+initial begin
+    src = new();           // 创建一个 Transaction 对象
+    src.stats.startT = 42; // 结果见图 5.5
+    dst = new src;         // 用 new 操作符将 src 拷贝到 dst 中，结果见图 5.6
+    dst.stats.startT = 96; // 改变 dst 和 src 的 stats
+    $display(src.stats.startT); // "96", 见图 5.7
+end
+```
+
+这两个Transaction对象都指向同一个Statistics对象,
+所以使用src句柄修改startT会影响dst句柄可以看到的值
+
+```SystemVerilog
+// 例 5.31 含有 copy 函数的简单类
+class Transaction;
+    bit [31:0] addr, crc, data[8]; // 没有 Statistic 句柄
+
+    function Transaction copy;
+        copy = new();          // 创建目标对象
+        copy.addr = addr;      // 填入数值
+        copy.crc = crc;
+        copy.data = data;      // 复制数组
+    endfunction
+endclass
+
+// 例 5.32 使用 copy 函数
+Transaction src, dst;
+
+initial begin
+    src = new();               // 创建第一个对象
+    dst = src.copy();          // 复制对象
+end
+```
+
+编写自己的深层复制函数
+
+```SystemVerilog
+// 例 5.33 深层复制函数
+class Transaction;
+    bit [31:0] addr, crc, data[8];
+    Statistics stats; // 指向 Statistics 对象的句柄
+    static int count = 0;
+    int id;
+
+    function new();
+        stats = new();
+        id = count++;
+    endfunction
+
+    function Transaction copy();
+        copy = new();          // 创建目标对象
+        copy.addr = addr;      // 填入数值
+        copy.crc = crc;
+        copy.data = data;
+        copy.stats = stats.copy(); // 调用 Statistics::copy 函数
+        id = count++;
+    endfunction
+endclass
+```
+
+使用pack和unpack函数
+
+```SystemVerilog
+// 例 5.34 使用 pack 和 unpack 函数
+Transaction tr,tr2;
+byte b[40];
+
+initial begin
+    tr = new();
+    tr.addr = 32'ha0a0a0a0;
+    tr.crc = '1;
+    foreach(tr.data[i])
+        tr.data[i] = i;
+        tr.pack(b); //打包对象到字节数组
+        $write("Pack results:");
+        foreach(b[i])
+            $write("%0h",b[i]);
+        $display;
+
+        tr2 = new();
+        tr2.unpack(b);
+        tr2.display();
+    end
+```
+
+### 建立一个测试平台
+
+![alt text](TestLayer.png)
+
+图中的Generator,Agent,Driver,Monitor,Checker和Scoreboard都是类
+建模成事务处理器,它们在Environment类内部例化
+
+Test处在最高层,即处在例化Environment类的程序中,功能覆盖定义可以放在Environment类的内部或者外部
+
+```SystemVerilog
+// 基本的事务类
+class Transator; //通用类
+    Transaction tr;
+    task run;
+        forever begin
+            //从前一个块中获取事务
+            ...
+            //处理事务
+            ...
+            //将事务发送到下游模块
+            ...
+       end
+    endtask
+endclass
+```
+
+
+## 随机化
 
 
 
