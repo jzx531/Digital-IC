@@ -3041,8 +3041,203 @@ initial begin
 end
 ```
 
+使用randc随机选取数组的值
+```SystemVerilog
+// 例 6.18 使用 randc 随机选取数组的值
+// 例 6.18 使用 randc 随机地选取数组的值
+class RandcInside;
+    int array[];                // 待选取的值
+    randc bit [15:0] index;     // 指向数组的指针
+
+    function new(input int a[]); // 构造、初始化
+        array = a;
+    endfunction
+
+    function int pick;          // 返回刚选取出的值
+        return array[index];
+    endfunction
+
+    constraint c_size {index < array.size;}
+endclass
+
+initial begin
+    RandcInside ri;
+
+    ri = new('{1,3,5,7,9,11,13});
+    repeat (ri.array.size) begin
+        assert(ri.randomize());
+        $display("Picked %2d [%0d]", ri.pick(), ri.index);
+    end
+end
+```
+
+条件约束
+->操作符可以产生和case操作符效果类似的语句块,它可以用于枚举类型的表达式，
+带有->操作符的约束块
+
+```SystemVerilog
+// 例 6.20 条件约束
+class BusOp;
+ constraint c_io{
+    (io_space_mode)->(addr[31]==1'b1);
+ }
+ ```
+
+带有if else操作符的约束块
+```SystemVerilog
+class BusOp;
+    constraint c_len_rw{
+        if(op == READ)
+           len inside {[BYTE:LWRD]};
+        else
+          len == LWRD;
+    }
+```
+
+以下是图片内容的 Markdown 代码：
+
+```markdown
+## 例 6.21 双向约束
+
+```systemverilog
+rand logic [15:0] r, s, t;
+
+constraint c_bidir {
+    r < t;
+    s == r;
+    t < 30;
+    s > 25;
+}
+```
+
+SystemVerilog 同时计算四个约束表达式。$r$ 必须小于 $t$，而 $t$ 必须小于 30。$r$ 等于 $s$，而 $s$ 必须大于 25。尽管没有直接约束 $t$ 的下限，但对于 $s$ 的约束隐含着对 $t$ 的下限的限制。表 6.1 列出了这三个变量的各种可能值。
+
+### 表 6.1 双向约束的求解
+
+| 解 | r | s | t | | 解 | r | s | t |
+| :--- | :---: | :---: | :---: | - | :--- | :---: | :---: | :---: |
+| **A** | 26 | 26 | 27 | | **D** | 27 | 27 | 28 |
+| **B** | 26 | 26 | 28 | | **E** | 27 | 27 | 29 |
+| **C** | 26 | 26 | 29 | | **F** | 28 | 28 | 29 |
+
+即使 `->` 和 `if-else` 这些看起来像 if-else 程序性语句的条件约束，也是双向的。例如，约束 `{(a==1) -> (b==0)}` 和 `{(!(a==1)) || b==0;}` 是等价的。约束求解器并不是先检查 `a==1`，然后再令 `b==0`。事实上，如果增加一个约束 `{b==1;}`，约束求解器将把 a 置为 0。
+```
+
+### 解的概率
+
+关系操作
+
+约束块中的关系操作决定了y的值依赖于x的值
+
+带有关系操作的类
+
+```SystemVerilog
+class Impl;
+    rand bit x;
+    rand bit [1:0] y;
+
+    constraint c_xy{
+        (x == 0)-> (y == 0);
+    }
+endclass
+```
+y的值依赖于x的值
+
+关系操作和双向约束
+
+```SystemVerilog
+
+class Imp2;
+  rand bit x;  //0或1
+  rand bit [1:0] y; //0,1,2或3
+  constraint c_xy{
+    y>0;
+    (x == 0)-> y == 0;
+  }
+endclass
+```
+
+使用solve...before 约束引导概率分布
+```SystemVerilog
+
+class SolveBefore;
+    rand bit x;
+    rand bit [1:0] y;
+
+    constraint c_xy{
+        (x == 0) -> (y == 0);
+        solve x before y;
+    }
+endclass
+```
+| 解 | x | y | 概率 |
+|----|---|---|------|
+| A  | 0 | 0 | 1/2  |
+| B  | 0 | 1 | 0    |
+| C  | 0 | 2 | 0    |
+| D  | 0 | 3 | 0    |
+| E  | 1 | 0 | 1/8  |
+| F  | 1 | 1 | 1/8  |
+| G  | 1 | 2 | 1/8  |
+| H  | 1 | 3 | 1/8  |
+
+solve y before x 约束的解
+
+| 解 | x | y | 概率 |
+|----|---|---|------|
+| A  | 0 | 0 | 1/8  |
+| B  | 0 | 1 | 0    |
+| C  | 0 | 2 | 0    |
+| D  | 0 | 3 | 0    |
+| E  | 1 | 0 | 1/8  |
+| F  | 1 | 1 | 1/4  |
+| G  | 1 | 2 | 1/4  |
+| H  | 1 | 3 | 1/4  |
 
 
+### 控制多个约束块
+
+```SystemVerilog
+这是图片中的 SystemVerilog 代码：
+
+```systemverilog
+// 例 6.28 使用 constraint_mode() 函数
+class Packet;
+    rand int length;
+    constraint c_short {length inside {[1:32]}; }
+    constraint c_long {length inside {[1000:1023]}; }
+endclass
+
+Packet p;
+initial begin
+    p = new();
+
+    // 通过禁止 c_short 约束产生长包
+    p.c_short.constraint_mode(0);
+    assert (p.randomize());
+
+    transmit(p);
+
+    // 通过禁止所有的约束，然后使能短包约束来产生短包
+    // then enabling only the short constraint
+    p.constraint_mode(0);
+    p.c_short.constraint_mode(1);
+    assert (p.randomize());
+    transmit(p);
+end
+```
+
+### 代码解析
+
+这段代码演示了如何使用 `constraint_mode()` 方法在运行时动态控制约束的开启与关闭。
+
+- **`class Packet`**：定义了一个包含随机变量 `length` 和两个互斥约束（`c_short` 和 `c_long`）的类。
+- **`p.c_short.constraint_mode(0);`**：显式地禁用了 `c_short` 约束。此时只有 `c_long` 生效，因此生成的 `length` 会在 1000 到 1023 之间（长包）。
+- **`p.constraint_mode(0);`**：禁用了该对象上的 **所有** 约束。
+- **`p.c_short.constraint_mode(1);`**：在禁用所有约束后，单独重新启用了 `c_short`。此时只有 `c_short` 生效，生成的 `length` 会在 1 到 32 之间（短包）。
+```
+
+### 有效性约束
 
 
 
