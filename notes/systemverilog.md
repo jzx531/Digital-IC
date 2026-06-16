@@ -3239,6 +3239,116 @@ end
 
 ### 有效性约束
 
+设置多个约束以保证随机激励的正确性是一种很好的随机化技术，它也称为“有效性约束”。例如，总线的“读-修改-写”命令只允许操作长字数据长度。
+
+### 例 6.29 使用有效性约束检查写命令的数据字长
+
+```systemverilog
+class Transaction;
+    rand enum {BYTE, WORD, LWRD, QWRD} length;
+    rand enum {READ, WRITE, RMW, INTR} opc;
+
+    constraint valid_RMW_LWRD {
+        (opc == RMW) -> length == LWRD;
+    }
+endclass
+```
+
+### 内嵌约束
+
+很多测试只会在代码的一个地方随机化对象
+
+SystemVerilog运行使用randomize() with来增加额外的约束,这和在类里增加约束是等效的
+
+这是图片中的 SystemVerilog 代码：
+
+```systemverilog
+// 例 6.30 randomize() with 语句
+class Transaction;
+    rand bit [31:0] addr, data;
+    constraint c1 {addr inside {[0:100], [1000:2000]};}
+endclass
+
+Transaction t;
+
+initial begin
+    t = new();
+
+    // addr 范围: 50-100, 1000-1500, data < 10
+    assert (t.randomize() with {addr >= 50; addr <= 1500;
+                                data < 10;});
+
+    driveBus(t);
+
+    // 强制 addr 取固定值, data > 10
+    assert (t.randomize() with {addr == 2000; data > 10;});
+
+    driveBus(t);
+end
+```
+
+### 代码解析
+
+这段代码演示了如何使用 `randomize() with` 语法在调用随机化时临时添加或修改约束，而无需修改类定义。
+
+- **`constraint c1`**：定义了基础约束，要求 `addr` 必须在 `[0:100]` 或 `[1000:2000]` 范围内。
+- **第一次 `randomize()`**：使用 `with` 块添加了额外约束。此时求解器需要同时满足 `c1` 和 `with` 块中的条件。因此 `addr` 的实际有效范围被缩小为 `[50:100]` 和 `[1000:1500]`（即基础范围与新增范围的交集）。
+- **第二次 `randomize()`**：通过 `addr == 2000` 将地址强制锁定为一个特定值（该值同时也满足基础约束 `c1`），并将数据约束改为大于 10。
+
+
+### 例 6.31 构造浴缸型分布
+
+```systemverilog
+class Bathtub;
+    int value; // 浴缸型分布的随机变量
+    int WIDTH=50, DEPTH=4, seed=1;
+
+    function void pre_randomize();
+        // 计算指数曲线
+        value = $dist_exponential(seed, DEPTH);
+        if (value > WIDTH) value = WIDTH;
+
+        // 把这一个点随机地放在左边或右边的曲线上
+        if ($urandom_range(1))
+            value = WIDTH - value;
+    endfunction
+
+endclass
+```
+
+这段代码通过 `pre_randomize()` 函数在标准随机化过程之前，利用系统函数 `$dist_exponential` 生成一个符合特定分布（如指数分布）的值，并通过逻辑判断将其映射为“浴缸型”分布（即两端概率高、中间概率低）。
+
+
+因为 `pre_randomize` 和 `post_randomize` 函数只能调用其他函数，不能调用消耗时间的任务，所以在执行 `randomize()` 函数的期间无法产生一段延时。如果想调试随机化过程中出现的问题，可以调用预先准备好的 void 类型的显示程序来显示中间结果。
+
+### 随机数函数
+
+Verilog-1995 中的各种分布函数都可以采用类似的方法使用，另外 SystemVerilog 还提供了一些新的分布函数。关于 dist 函数的更详细的内容，请查阅随机过程的书籍。下面是一些常用的函数：
+
+(1) `$random()` —— 平均分布，返回 32 位有符号随机数；
+
+(2) `$urandom()` —— 平均分布，返回 32 位无符号随机数；
+
+(3) `$urandom_range()` —— 在指定范围内的平均分布；
+
+(4) `$dist_exponential()` —— 指数衰落，如图 6.1 所示；
+
+(5) `$dist_normal()` —— 钟型分布；
+
+(6) `$dist_poisson()` —— 钟型分布；
+
+(7) `$dist_uniform()` —— 平均分布。
+
+`$urandom_range()` 函数有两个参数，一个上限参数和一个可选的下限参数。
+
+### 例 6.32 使用 $urandom_range 函数
+
+```systemverilog
+a = $urandom_range(3, 10);    // 值的范围是 3~10
+a = $urandom_range(10, 3);    // 值的范围是 3~10
+b = $urandom_range(5);        // 值的范围是 0~5
+```
+
 
 
 
