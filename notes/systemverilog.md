@@ -3436,3 +3436,127 @@ assert(cmd.randomize());
 
 如果只有少数几个变量需要修改,可以使用rand_mode函数把这些变量设置为非随机变量
 
+```SystemVerilog
+// 例 6.35 用 rand_mode 禁止变量的随机化
+// 产生变长负载的包
+class Packet;
+    rand bit [7:0] length, payload[];
+    constraint c_valid {length > 0;
+                        payload.size == length;}
+
+    function void display(string msg);
+        $display("\n% s", msg);
+        $write("Packet len=%0d, payload size=%0d, bytes=",
+               length, payload.size());
+        for (int i=0; (i < 4 && i < payload.size()); i++)
+            $write(" %0d", payload[i]);
+        $display;
+    endfunction
+endclass
+
+Packet p;
+initial begin
+    p = new();
+
+    // 随机化所有的变量
+    assert (p.randomize());
+    p.display("Simple randomize");
+
+    p.length.rand_mode(0);      // 设置包长为非随机值
+    p.length = 42;              // 设置包长为常数
+    assert (p.randomize());     // 然后再随机化 payload
+    p.display("Randomize with rand_mode");
+end
+```
+
+可以使用handle.randomize(null) 把所有的变量当作非随机变量,仅仅检查这些变量是否满足约束条件
+
+随机化个别变量
+
+在调用randomize()函数时只传递变量的一个子集,这样就只会随机化类里的几个变量
+
+```SystemVerilog
+class Rising;
+    byte low;//非随机变量
+    rand byte med,hi;//随机变量
+    constraint up
+    {
+        low<med;med<hi;
+    }
+endclass
+
+intial begin
+ Rising r;
+ r= new();
+ r.randomize();
+ r.randomize(med);//只随机化med\
+ r.randomize(low);//只随机化med和hi
+end
+```
+
+
+```SystemVerilog
+// 例 6.38 使用 constraint_mode 打开或关闭约束
+class Instruction;
+    rand opcode_e opcode;
+    // ... (省略部分代码)
+
+    constraint c_no_operands {
+        opcode == NOP || opcode == HALT;
+    }
+
+    constraint c_one_operand {
+        opcode == CLR || opcode == NOT;
+    }
+endclass
+
+Instruction instr;
+initial begin
+    instr = new();
+
+    // 产生没有操作数的指令
+    instr.constraint_mode(0);             // 关闭所有的约束
+    instr.c_no_operands.constraint_mode(1); // 仅开启 c_no_operands
+    assert (instr.randomize());
+
+    // 产生只有一个操作数的指令
+    instr.constraint_mode(0);             // 再次关闭所有的约束
+    instr.c_one_operand.constraint_mode(1); // 仅开启 c_one_operand
+    assert (instr.randomize());
+end
+```
+
+
+
+函数的函数体可以在函数的外部定义，同样，约束的约束体也可以在类的外部定义，如 5.11 节所示。可以在一个文件里定义一个类，这个类只有一个空的约束，然后在每个不同的测试里定义这个约束的不同版本以产生不同的激励。
+
+**例 6.39 带有外部约束的类**
+
+```systemverilog
+// packet.sv
+class Packet;
+    rand bit [7:0] length;
+    rand bit [7:0] payload[];
+    constraint c_valid {length > 0;
+                        payload.size() == length;}
+
+    constraint c_external;
+endclass
+```
+
+**例 6.40 定义外部约束的程序**
+
+```systemverilog
+// test.sv
+program automatic test;
+    include "packet.sv"
+    constraint Packet::c_external {length == 1;}
+
+    ...
+endprogram
+```
+
+---
+
+外部约束和内嵌约束相比具有很多优点。外部约束可以放在另一个文件里，从而在不同的测试里可以复用外部约束。外部约束对类的所有实例都起作用，而内嵌约束仅仅影响一次 `randomize()` 调用。外部约束提供了一种不需要学习高级的 OOP 技术就可以改变类的方法。但要注意，这种方法只能增加约束，而不能改变已有的约束，而且必须事先在原来的类里定义外部约束的原型。
+
