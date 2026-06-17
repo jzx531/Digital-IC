@@ -3350,5 +3350,89 @@ b = $urandom_range(5);        // 值的范围是 0~5
 ```
 
 
+### 约束的技巧和技术
 
+```SystemVerilog
+//使用变量的约束
+class bounds；
+    rand int size;
+    int max_size = 100;
+    constraint c_size {size <= max_size;}
+    endclass
+```
+
+这段代码展示了 SystemVerilog 中随机约束（Random Constraint）的一个高级用法：**在 `dist` 分布约束中使用变量作为权重**。这允许用户在仿真运行时动态调整随机变量的概率分布，而无需修改代码中的硬编码数值。
+
+### 提取的代码
+
+```systemverilog
+typedef enum {READ8, READ16, READ32} read_e;
+
+class ReadCommands;
+    rand read_e read_cmd;
+    int read8_wt = 1, read16_wt = 1, read32_wt = 1;
+
+    constraint c_read {
+        read_cmd dist {READ8 := read8_wt,
+                       READ16 := read16_wt,
+                       READ32 := read32_wt};
+    }
+endclass
+```
+
+### 代码解析
+
+#### 枚举类型定义
+
+- `typedef enum {READ8, READ16, READ32} read_e;`
+- 定义了一个名为 `read_e` 的枚举类型，包含三个成员：`READ8`、`READ16` 和 `READ32`。这通常用于表示不同的总线命令或操作码。
+
+#### 类定义与成员变量
+
+- `class ReadCommands;`
+- 定义了一个名为 `ReadCommands` 的类。
+- `rand read_e read_cmd;`
+- 声明了一个随机变量 `read_cmd`，其类型为前面定义的枚举 `read_e`。这意味着在进行随机化（`randomize()`）时，求解器会尝试给这个变量赋值。
+- `int read8_wt = 1, read16_wt = 1, read32_wt = 1;`
+- 声明了三个整型变量，用作权重（weight）。初始值都设为 1，意味着默认情况下三种命令被选中的概率是相等的（各占 1/3）。这些变量**不是**随机的（没有 `rand` 关键字），它们通常由测试用例在随机化之前进行赋值。
+
+#### 约束块
+
+- `constraint c_read { ... }`
+- 这是核心部分，定义了 `read_cmd` 的分布规则。
+- `read_cmd dist { ... };`
+- `dist` 是 SystemVerilog 的分布操作符，用于指定随机变量取特定值的权重。
+- **关键特性：使用变量作为权重**
+  - 传统的写法通常是硬编码数字，例如 `READ8 := 50`。
+  - 这里的写法是 `READ8 := read8_wt`。这意味着权重的值来自于变量 `read8_wt`。
+  - **优势**：你可以在调用 `randomize()` 之前，通过外部代码修改 `read8_wt`、`read16_wt` 等变量的值，从而动态改变随机化的行为。例如，如果你想让测试主要集中在 8 位读取上，只需将 `read8_wt` 设为 90，其他设为 5 即可。
+
+#### 语法细节
+
+- `:=` 操作符：表示“范围权重”。对于枚举类型这种单值情况，它等同于 `/`（单值权重）。意思是如果选中该值，其权重就是指定的数值。
+- 概率计算公式：某个值被选中的概率 = (该值的权重) / (所有可能值的权重之和)。
+
+### 应用场景示例
+
+假设你想模拟一个主要进行 32 位读取的系统，你可以这样编写测试代码：
+
+```systemverilog
+ReadCommands cmd = new();
+
+// 动态调整权重
+cmd.read8_wt = 10;
+cmd.read16_wt = 10;
+cmd.read32_wt = 80; // 80% 的概率生成 READ32
+
+// 执行随机化
+assert(cmd.randomize());
+
+// 此时 cmd.read_cmd 有 80% 的概率是 READ32
+```
+
+这种机制极大地提高了验证环境的灵活性和复用性。
+
+### 使用非随机值
+
+如果只有少数几个变量需要修改,可以使用rand_mode函数把这些变量设置为非随机变量
 
