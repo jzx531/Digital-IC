@@ -3655,3 +3655,99 @@ class LittleUniqueArray;
 endclass
 ```
 
+唯一值发生器
+```SystemVerilog
+class Unique;
+    rand bit [7:0] val;
+    int max_value;
+    function new(int max_value = 10);
+        this.max_value = max_value;
+    endfunction
+
+    constraint c {
+        val < max_value;
+    }
+endclass
+```
+
+```SystemVerilog
+class UniqueArray;
+    int max_array_size, max_value;       // 数组最大长度、元素最大值
+    rand bit [7:0] a[];                  // 随机化动态数组（元素为8位无符号数）
+    constraint c_size {a.size() inside {[1:max_array_size]};}  // 约束：数组大小在[1, max_array_size]内
+
+    function new(int max_array_size=2, max_value=2);  // 构造函数（带默认参数）
+        this.max_array_size = max_array_size;
+        if (max_value < max_array_size)   // 若“元素最大值”小于“数组最大长度”，则调整（避免重复）
+            this.max_value = max_array_size;
+        else
+            this.max_value = max_value;
+    endfunction
+
+    // 随机化后处理：填充唯一值
+    function void post_randomize;
+        RandcRange rr;                    // 假设RandcRange是自定义类（含randc变量+randomize）
+        rr = new(max_value);              // 初始化RandcRange（内部维护不重复的随机序列）
+        foreach (a[i]) begin              // 遍历数组每个元素
+            assert (rr.randomize());      // 断言：确保RandcRange能成功随机化（获取下一个唯一值）
+            a[i] = rr.value;              // 将RandcRange的唯一值赋给数组元素
+        end
+    endfunction
+
+    function void display();              // 显示数组信息
+        $write("Size: %3d:", a.size());
+        foreach (a[i]) $write("%4d", a[i]);
+        $display;
+    endfunction
+endclass
+```
+
+使用UniqueArray类
+
+```SystemVerilog
+program automatic test;
+    UniqueArray ua;
+    initial begin
+        ua = new(50);
+
+        repeat(10) begin
+            assert(ua.randomize());
+            ua.display();
+        end
+    end
+endprogram
+```
+随机化句柄数组
+
+```SystemVerilog
+parameter MAX_SIZE=10;
+
+class RandStuff;
+    rand int value;
+endclass
+
+class RandArray;
+    rand RandStuff array[];           // 不要忘记使用 rand!
+
+    constraint c {array.size() inside {[1:MAX_SIZE]}; }
+
+    function new();
+        array=new[MAX_SIZE];          // 按最大的容量分配
+        foreach (array[i])
+            array[i]=new();
+    endfunction;
+endclass
+
+RandArray ra;
+initial begin
+    ra=new();                         // 构造数组和所有的对象
+    assert(ra.randomize());           // 随机化，可能会减小数组
+    foreach (ra.array[i])
+        $display(ra.array[i].value);
+end
+
+```
+
+
+### 产生原子激励和场景
+
