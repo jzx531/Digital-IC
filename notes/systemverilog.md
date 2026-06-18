@@ -3560,3 +3560,98 @@ endprogram
 
 外部约束和内嵌约束相比具有很多优点。外部约束可以放在另一个文件里，从而在不同的测试里可以复用外部约束。外部约束对类的所有实例都起作用，而内嵌约束仅仅影响一次 `randomize()` 调用。外部约束提供了一种不需要学习高级的 OOP 技术就可以改变类的方法。但要注意，这种方法只能增加约束，而不能改变已有的约束，而且必须事先在原来的类里定义外部约束的原型。
 
+约束动态数组的大小
+
+```SystemVerilog
+class dyn_size;
+    rand logic [31:0] d[];
+    constraint d_size {d.size() inside {[1:10]};}
+endclass
+```
+
+随机脉冲类
+
+```SystemVerilog
+class Pulse;
+    rand bit strobe[MAX_TRANSFER_LEN];
+    constraint c_set_four{
+        strobe.sum() == 4'h4;
+    }
+endclass
+
+initial begin
+    StrobePat sp;
+    int count = 0; //数据数组的索引
+    sp = new();
+    assert(sp.randomize());
+
+    foreach(sp.strobe[i]) begin
+       @bus.cb;
+       bus.cb.strobe = sp.strobe[i];
+       if(sp.strobe[i]) begin
+          bus.cb.strobe <= data[count++];
+    end
+end
+```
+
+约束数组和队列的每一个元素
+
+```SystemVerilog
+class goot_sum5;
+    rand uint len[];
+    constraint c_len{
+        foreach(len[i])
+        len[i] inside {[1:255]};
+        len.sum() < 1024;
+        len.size() inside {[1:8]};
+    }
+endclass
+```
+
+使用foreach产生递增的数组元素的值
+
+```SystemVerilog
+class Ascend;
+    rand uint d[10];
+    constraint c{
+        foreach(d[i])
+            if(i>0)
+            d[i] > d[i-1];
+    }
+endclass
+```
+
+使用foreach产生唯一的元素值
+
+```SystemVerilog
+class UniqueSlow;
+    rand bit[7:0] ua[64];
+    constraint c{
+        foreach(ua[i])
+           foreach(ua[j])
+                if(i!=j)
+                    ua[i] != ua[j];
+    }
+    endclass
+```
+
+```SystemVerilog
+// 例 6.59 用 randc 辅助类产生唯一的元素值
+class randc8;
+    randc bit [7:0] val;
+endclass
+
+class LittleUniqueArray;
+    bit [7:0] ua [64];      // 每个元素具有唯一值的数组
+
+    function void pre_randomize;
+        randc8 rc8;
+        rc8 = new();
+        foreach (ua[i]) begin
+            assert(rc8.randomize());
+            ua[i] = rc8.val;
+        end
+    endfunction
+endclass
+```
+
