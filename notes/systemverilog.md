@@ -3751,3 +3751,285 @@ end
 
 ### 产生原子激励和场景
 
+这段代码展示了 SystemVerilog 中 **序列（Sequence）** 的定义与使用，特别是利用 `randsequence` 进行随机指令流生成的场景。
+
+以下是提取的代码及其详细解析：
+
+### 提取的代码
+
+```systemverilog
+initial begin
+    for (int i=0; i<15; i++) begin
+        randsequence (stream)
+            stream : cfg_read :=1 |
+                     io_read   :=2 |
+                     mem_read  :=5;
+
+            cfg_read : { cfg_read_task; } |
+                       { cfg_read_task; } cfg_read;
+
+            mem_read : { mem_read_task; } |
+                       { mem_read_task; } mem_read;
+
+            io_read  : { io_read_task; } |
+                       { io_read_task; } io_read;
+        endsequence
+    end // for
+end
+
+task cfg_read_task;
+    ...
+endtask
+```
+
+### 代码解析
+
+这段代码的主要目的是在一个循环中生成随机的读写操作流，模拟硬件验证中的随机激励。
+
+#### 1. `randsequence` 结构
+
+这是 SystemVerilog 特有的结构，用于定义上下文无关文法（Context-Free Grammar），从而生成符合特定规则的随机序列。
+
+- **起始符（Start Symbol）：** `stream` 是序列的入口点。
+- **权重分配（Weights）：** 在 `stream` 的定义中使用了 `:=` 符号来指定概率权重。
+  - `cfg_read := 1`：配置读操作的权重为 1。
+  - `io_read := 2`：IO 读操作的权重为 2。
+  - `mem_read := 5`：内存读操作的权重为 5。
+  - **结果分析：** 总权重为 $1+2+5=8$。这意味着在生成的序列中，`mem_read` 出现的概率最高（约 62.5%），其次是 `io_read`（25%），最后是 `cfg_read`（12.5%）。这种加权机制常用于模拟真实的业务负载分布。
+
+#### 2. 递归定义（Recursion）
+
+代码中的 `cfg_read`、`mem_read` 和 `io_read` 定义展示了递归特性，用于控制操作的突发长度（Burst Length）。以 `cfg_read` 为例：
+
+```systemverilog
+cfg_read : { cfg_read_task; } |              // 选项 A: 执行一次任务后结束
+           { cfg_read_task; } cfg_read;      // 选项 B: 执行一次任务后，再次调用 cfg_read
+```
+
+- **含义：** 这是一个典型的左递归或右递归结构（此处表现为执行任务后可能继续递归）。
+- **行为：** 当求解器选择 `cfg_read` 时，它会先执行 `cfg_read_task`。然后，它有 50% 的概率直接结束该分支，或者有 50% 的概率再次进入 `cfg_read` 状态，从而形成连续的配置读操作（Burst）。
+- **注意：** 由于没有显式的终止条件限制递归深度，理论上这可能产生无限长的序列，但在仿真工具的实际实现中通常会有内部保护机制或依赖于随机种子的自然终止。
+
+#### 3. 循环控制
+
+```systemverilog
+for (int i=0; i<15; i++) begin ... end
+```
+
+外层包裹了一个 `for` 循环，意味着上述的随机序列生成过程会重复执行 15 次。每次循环都会重新评估 `randsequence`，生成一段新的随机操作流。
+
+#### 4. 任务调用
+
+花括号 `{ ... }` 中的内容（如 `{ cfg_read_task; }`）表示在该序列节点匹配成功时执行的具体动作。这里调用了外部定义的 task（如 `cfg_read_task`），这些 task 通常包含具体的驱动信号、时序等待等验证逻辑。
+
+### 总结
+
+该代码片段是一个高效的**随机指令生成器**。它通过加权概率控制了不同操作类型的分布比例，并通过递归结构实现了操作的突发性（Burst），非常适合用于总线协议或存储控制器的压力测试。
+
+### 随机控制
+
+使用randcase和$urandom_range的随机控制
+
+```SystemVerilog
+initial begin
+    int len;
+    randcase
+    1: len = $urandom_range(0,2);
+    2: len = $urandom_range(3,5);
+    7: len = $urandom_range(6,8);
+    endcase
+    $display("Random length: %0d", len);
+
+end
+```
+
+等效的约束类
+
+```SystemVerilog
+class LenDist;
+    rand int len;
+    constraint c
+    {
+        len dist {[0:2]:=1, [3:5]:=2, [6:8]:=7}
+    }
+endclass
+
+LenDist lenD;
+
+initial begin
+    lenD = new();
+    assert(lenD.randomize());
+    $display("Random length: %0d", lenD.len);
+end
+```
+
+使用randcase建立决策树
+
+```SystemVerilog
+initial begin
+    for (int i=0; i<15; i++) begin
+        randsequence (stream)
+            stream : cfg_read :=1 |
+                     io_read   :=2 |
+                     mem_read  :=5;
+
+            cfg_read : { cfg_read_task; } |
+                       { cfg_read_task; } cfg_read;
+
+            mem_read : { mem_read_task; } |
+                       { mem_read_task; } mem_read;
+
+            io_read  : { io_read_task; } |
+                       { io_read_task; } io_read;
+        endsequence
+    end // for
+end
+
+task cfg_read_task;
+    ...
+endtask
+```
+
+```SystemVerilog
+// 例 6.67 用 randcase 建立决策树
+initial begin
+    // Level 1
+    randcase
+        one_write_wt: do_one_write();
+        one_read_wt:  do_one_read();
+        seq_write_wt: do_seq_write();
+        seq_read_wt:  do_seq_read();
+    endcase
+end
+
+// Level 2
+task do_one_write;
+    randcase
+        mem_write_wt: do_mem_write();
+        io_write_wt:  do_io_write();
+        cfg_write_wt: do_cfg_write();
+    endcase
+endtask
+
+task do_one_read;
+    randcase
+        mem_read_wt: do_mem_read();
+        io_read_wt:  do_io_read();
+        cfg_read_wt: do_cfg_read();
+    endcase
+endtask
+```
+
+### 随机数发生器
+
+简单的伪随机数发生器
+```SystemVerilog
+reg [31:0] state = 32'h12345678;
+function logic [31:0] my_random;
+    logic [63:0] s64;
+    s64 = state * state;
+    state = (s64 >> 16) + state;
+    my_random = state;
+endfunction
+```
+
+
+### 随机器件配置
+
+以太网交换机的配置
+
+```SystemVerilog
+class eth_cfg;
+    rand bit [3:0] in_use; //测试中使用的端口
+    rand bit [47:0] mac_addr[4]; //MAC地址
+    rand bit [3：0] is_100; 
+    rand uint run_for_n_frames; //测试中的帧数
+
+    //在unicast 模式时设置某些地址位
+    constraint local_unicast{
+        foreach(mac_addr[i])
+            mac_addr[i][47:40] == 4'b00;
+    }
+
+    constraint reasonable{
+        run_for_n_frames inside{[1:100]};
+    }
+
+endclass : eth_cfg
+```
+
+在Environment类的不同阶段使用了配置类,配置在Environment的构造函数是创建，
+但直到gen_cfg阶段才随机化,这就使你在调用randomize()之前打开或关闭约束
+
+```SystemVerilog
+class Environment;
+    eth_cfg cfg;          // 配置对象句柄
+    eth_src gen[4];       // 4个发生器（Generator）数组
+    eth_mii drv[4];       // 4个驱动器（Driver）数组
+
+    function new();
+        cfg = new();      // 创建配置对象
+    endfunction
+
+    // 随机化配置
+    function void gen_cfg;
+        assert(cfg.randomize());
+    endfunction
+
+    // 使用随机配置建立环境
+    function void build();
+        foreach (gen[i])
+            if (cfg.in_use[i]) begin
+                gen[i] = new();   // 实例化发生器
+                drv[i] = new();   // 实例化驱动器
+                if (cfg.is_100[i])
+                    drv[i].set_speed(100); // 根据配置设置速度
+            end
+    endfunction
+
+    task run();
+        foreach (gen[i])
+            if (cfg.in_use[i]) begin
+                // 启动测试平台的事务处理器
+                gen[i].run();
+                ...
+            end
+    endtask
+
+    task wrap_up();
+        // 暂时还没有使用
+    endtask
+
+endclass : Environment
+```
+
+```SystemVerilog
+program test;
+    Environment env;
+    initial begin
+        env = new();
+        env.gen_cfg(); // 随机化配置
+        env.build();  // 建立环境
+        env.run();   // 运行测试
+        env.wrap_up(); // 结束测试
+        end
+    endprogram
+```
+
+修改随机配置的简单测试
+
+```SystemVerilog
+program test;
+    Environment env;
+
+    initial begin
+        env = new();
+        env.gen_cfg;
+        env.cfg.in_use = 4'b1111; // 修改配置
+        env.build();
+        env.run();
+        env.wrap_up();  
+        end
+    endprogram
+```
+
