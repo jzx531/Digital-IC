@@ -5008,7 +5008,138 @@ endprogram
 
 ### 构筑带线程并可实现线程间通信的测试程序
 
+基本的事务处理器
+```systemverilog
+class Agent;
+    mailbox gen2agt,agt2drv;
+    Transaction t;
 
+    function new(mailbox gen2agt, mailbox agt2drv);
+        this.gen2agt = gen2agt;
+        this.agt2drv = agt2drv;
+    endfunction
+
+    task run();
+        fork
+            begin
+                while (1) begin
+                    gen2agt.get(t);
+                    $display("Agent: received transaction %0d", t.id);
+                    agt2drv.put(t);
+                end
+            end
+            begin
+                while (1) begin
+                    agt2drv.get(t);
+                    $display("Agent: sent transaction %0d", t.id);
+                end
+            end
+        join
+        endtask
+    endclass
+```
+从上游模块获取数据,把事务再发送给下游模块
+
+配置类
+
+```systemverilog
+class Config;
+    bit [31:0] run_for_n_trans;
+    constraint reasonable
+    {
+        fun_for_n_trans inside [1:1000];
+    }
+endclass
+```
+环境类
+
+```systemVerilog
+class Environment;
+
+    Generator gen;
+    Agent agt;
+    Driver drv;
+    Monitor mon;
+    Checker chk;
+    Scoreboard scb;
+    Config cfg;
+    mailbox gen2agt, agt2drv, mon2chk;
+
+    extern function new();
+    extern function void gen_cfg();
+    extern function void build();
+    extern task run();
+    extern task wrap_up();
+
+endclass
+
+
+function Environment::new();
+    cfg = new();
+endfunction
+
+function void Environment::gen_cfg();
+    assert (cfg.randomize());
+endfunction
+
+function void Environment::build();
+    // 初始化信箱
+    gen2agt = new();
+    agt2drv = new();
+    mon2chk = new();
+
+    // 初始化事务处理器
+    gen = new(gen2agt);
+    agt = new(gen2agt, agt2drv);
+    drv = new(agt2drv);
+    mon = new(mon2chk);
+    chk = new(mon2chk);
+    scb = new();
+endfunction
+
+task Environment::run();
+    fork
+        gen.run(cfg.run_for_n_trans);
+        agt.run();
+        drv.run();
+        mon.run();
+        chk.run();
+        scb.run(cfg.run_for_n_trans);
+    join
+endtask
+
+task Environment::wrap_up();
+    fork
+        gen.wrap_up();
+        agt.wrap_up();
+        drv.wrap_up();
+        mon.wrap_up();
+        chk.wrap_up();
+        scb.wrap_up();
+    join
+
+endtask
+```
+基本测试程序
+
+```systemverilog
+program automatic test;
+    Environment env;
+    initial begin
+        env = new();
+        env.gen_cfg();
+        env.build();
+        env.run();
+        env.wrap_up();
+    end
+endprogram
+```
+
+## 面向对象编程的高级技巧指南
+
+### 继承简介
+
+事务基类
 
 
 
