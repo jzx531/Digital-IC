@@ -4033,3 +4033,329 @@ program test;
     endprogram
 ```
 
+## 线程及线程间通信
+
+### 线程的使用
+
+```SystemVerilog
+// 例 7.1 fork...join 和 begin...end 的相互作用
+initial begin
+    $display("@%0t: start fork...join example", $time);
+    #10 $display("@%0t: sequential after #10", $time);
+
+    fork
+        $display("@%0t: parallel start", $time);
+        #50 $display("@%0t: parallel after #50", $time);
+        #10 $display("@%0t: parallel after #10", $time);
+
+        begin
+            #30 $display("@%0t: sequential after #30", $time);
+            #10 $display("@%0t: sequential after #10", $time); // 注意：此处相对时间为#10，绝对时间为#40
+        end
+    join
+
+    $display("@%0t: after join", $time);
+    #80 $display("@%0t: finish after #80", $time);
+end
+```
+
+fork join 直到 #50开头的最后那条语句执行结束后才完成
+
+fork join_none 块在调度其内快语句时,父线程继续执行,除了join被换成join_none以外,其余均相同
+
+
+
+```systemverilog
+// 例 7.3 fork...join_none 代码
+initial begin
+    $display("@%0t: start fork...join_none example", $time);
+    #10 $display("@%0t: sequential after # 10", $time);
+
+    fork
+        $display("@%0t: parallel start", $time);
+        #50 $display("@%0t: parallel after # 50", $time);
+        #10 $display("@%0t: parallel after # 10", $time);
+
+        begin
+            #30 $display("@%0t: sequential after # 30", $time);
+            #10 $display("@%0t: sequential after # 10", $time);
+        end
+    join_none
+
+    $display("@%0t: after join_none", $time);
+    #80 $display("@%0t: finish after # 80", $time);
+end
+```
+
+> **注意：** 这个块相应的框图类似于图 7.3。注意 `join_none` 块后那个语句的执行早于 `fork...join_none` 内的任何语句（指那些带有延时的语句）。
+
+### 例 7.4 `fork...join_none` 的输出
+
+这是上述代码运行后的仿真日志输出，验证了并行与顺序执行的交错情况。
+
+```text
+@0: start fork...join_none example
+@10: sequential after #10
+@10: after join_none
+@10: parallel start
+@20: parallel after #10
+@40: sequential after #30
+@50: sequential after #10
+@60: parallel after #50
+@90: finish after #80
+```
+
+fork join_any块对块内语句进行调度,当第一个语句完成时,父线程才继续执行,其他停顿的线程也得以继续
+
+```systemverilog
+initial begin
+    $display("@%0t: start fork...join_any example", $time);
+    #10 $display("@%0t: sequential after #10", $time);
+
+    fork
+        $display("@%0t: parallel start", $time);
+        #50 $display("@%0t: parallel after #50", $time);
+        #10 $display("@%0t: parallel after #10", $time);
+
+        begin
+            #30 $display("@%0t: sequential after #30", $time);
+            #10 $display("@%0t: sequential after #10", $time);
+        end
+    endjoin_any
+    $display("@%0t: after join_any", $time);
+    #80 $display("@%0t: finish after #80", $time);
+end
+```
+
+在类中创建线程
+
+使用 fork...join_none 可以开启一个线程,比如随机事务发生器的替代代码
+
+完整的测试平台还包括用于驱动,监测,检验以及其他操作的类,所有这些都带有并发运行的事务处理器
+
+```SystemVerilog
+// 例 7.7 带有任务 run 的发生器/驱动器类
+class Gen_drive;
+    // 创建 N 个数据包的事务处理器
+    task run(int n);
+        Packet p;
+        fork
+            repeat (n) begin
+                p = new();
+                assert(p.randomize());
+                transmit(p);
+            end
+        join_none // 使用 fork-join_none 以使 run() 不发生阻塞
+    endtask
+
+    task transmit(input Packet p);
+        ...
+    endtask
+endclass
+
+Gen_drive gen;
+
+initial begin
+    gen = new();
+    gen.run(10);
+    // 启动检验、监测和其他线程
+    ...
+end
+```
+
+动态线程
+
+在Verilog中,线程是可预知的,可以通过统计源代码中initial ,always和fork...join块的数量来确定一个模块中有多少线程,而在System Verilog中,可以动态地创建线程,而不用等到它们都执行完毕
+
+动态线程的创建
+
+```SystemVerilog
+program automatic test(bus_ifc.TB bus);
+    task check_trans(Transaction tr);
+        fork
+            begin
+            wait(bus.cb.addr == tr.addr);
+            $display("@%0t: transaction %0d received", $time, tr.id);
+            end
+        join_none
+    endtask
+
+    Transaction tr;
+    initial begin
+        repeat(10) begin
+            tr = new();
+            assert(tr.randomize());
+            transmit(tr);
+            check_trans(tr);
+        end
+        #100 $display("@%0t: finish", $time);
+    end
+endprogram
+```
+当任务check_trans被调用时,它便会产生一个线程用来检测总线以获取匹配的事务地址
+
+线程中的自动变量
+
+在循环中内嵌fork ... join_none的不良代码的执行过程
+
+以下是从图片中提取的 SystemVerilog 代码及其详细解析。这段代码展示了一个在 `for` 循环中使用 `fork...join_none` 时非常经典的 **变量作用域陷阱**。
+
+### 提取的代码
+
+```systemverilog
+// 例 7.9 不良代码：在循环中内嵌 fork...join_none
+program no_auto;
+    initial begin
+        for (int j=0; j<3; j++)
+            fork
+                $write(j);      // 漏洞——得到的是最终的索引值
+            join_none
+        #0 $display("\n");
+    end
+endprogram
+```
+
+
+- **预期**：开发者通常希望打印出 `012`，即每次循环迭代时 `j` 的值（0, 1, 2）。
+- **实际**：输出通常是 `333`。
+
+
+这个现象是由 SystemVerilog 的 **线程调度机制** 和 **变量生命周期** 共同导致的：
+
+1. **非阻塞特性 (`join_none`)**：
+   - `fork...join_none` 会立即启动一个后台线程，但不会等待该线程执行完毕，主线程（父进程）会立即继续执行下一次循环。
+   - 这意味着 `for` 循环会在极短的时间内（同一个时间片内）迅速跑完，将 `j` 从 0 增加到 3。
+
+2. **变量共享与引用**：
+   - 虽然 `j` 是在 `for` 循环内部声明的，但在某些仿真器实现或特定的程序块上下文（如 `program` 块默认是静态的）中，或者由于线程调度的延迟，后台启动的子线程并没有立即读取 `j` 的值。
+   - 当子线程真正被调度执行 `$write(j)` 时，主循环早已结束，此时 `j` 的值已经变成了循环终止条件 **3**。
+   - 所有三个后台线程实际上都引用了同一个变量 `j`（或者说是该变量在循环结束时的最终状态）。
+
+3. **`#0` 的作用**：
+   - 代码最后的 `#0 $display("\n")` 是一个零延时语句。它的作用是挂起当前线程，让出控制权，确保之前产生的三个后台线程有机会在当前时间步内被执行。如果没有这行代码，仿真可能会直接结束，导致什么都打印不出来。
+
+为了避免这个问题，必须为每次迭代创建一个 **自动变量（Automatic Variable）** 的副本。通常的做法是在 `fork` 块内部使用 `begin...end` 并声明一个局部变量：
+
+```systemverilog
+for (int j=0; j<3; j++) begin
+    fork
+        automatic int k = j; // 创建 j 的副本
+        $write(k);           // 打印副本，值为 0, 1, 2
+    join_none
+end
+```
+
+通过这种方式，每个后台线程都会捕获当前循环迭代中 `j` 的独立副本，从而得到预期的 `012` 输出。
+
+另一种写法是在fork...join_none外部声明自动变量
+```systemverilog
+program automatic bug_free;
+    initial begin
+        for( int j = 0 ; j < 3 ; j++) begin
+            int k = j; // 创建 j 的副本
+            fork
+                $write(k); // 打印副本，值为 0, 1, 2
+            join_none
+        end
+        #0 $display("\n");
+    end
+endprogram
+```
+
+等待所有衍生线程
+
+使用wait fork等待所有子线程结束
+```SystemVerilog
+task run_threads;
+    fork
+        check_trans(tr1) ; //产生第一个线程
+        check_trans(tr2) ; //产生第二个线程
+        check_trans(tr3) ; //产生第三个线程
+    join_none
+    //。。。在这里等待上述线程结束
+    wait fork；
+endtask
+```
+
+在线程间共享变量
+
+使用共享程序变量导致的漏洞
+
+以下是从图片中提取的 SystemVerilog 代码，展示了由于在 `program` 块中使用共享变量而导致的经典并发错误。
+
+### 例 7.15 使用共享程序变量导致的漏洞
+
+这段代码演示了一个常见的陷阱：当循环变量 `i` 被定义为程序级（Program-level）的全局变量时，`fork...join_none` 创建的并行线程会共享同一个 `i`，导致数据竞争和不可预测的结果。
+
+```systemverilog
+// 例 7.15 使用共享程序变量导致的漏洞
+program bug;
+    class Buggy;
+        int data[10];
+        task transmit;
+            fork
+                // i 在这里并没有声明，它引用的是外部的全局变量 i
+                for (i=0; i<10; i++)
+                    send(data[i]);
+            join_none
+        endtask
+    endclass
+
+    int i;                  // 共享的程序级变量 i
+    Buggy b;
+    event receive;
+
+    initial begin
+        b = new();
+        // i 在这里没有声明，使用的是上面的全局变量 i
+        for (i=0; i<10; i++)
+            b.data[i] = i;
+
+        b.transmit();
+
+        // i 在这里没有声明，使用的是上面的全局变量 i
+        for (i=0; i<10; i++)
+            @(receive) $display(b.data[i]);
+    end
+endprogram
+```
+
+
+在上述代码中，变量 `i` 是在 `program` 块层级声明的。这意味着它是 **静态的** 且 **全局共享** 的。
+
+- 当 `b.transmit()` 中的 `fork` 启动时，它创建了一个后台线程来执行 `for` 循环。
+- 然而，这个后台线程使用的 `i` 与 `initial` 块中后续循环使用的 `i` 是 **同一个物理变量**。
+- 当 `transmit` 任务还在后台尝试遍历数组发送数据时，`initial` 块的主线程可能已经继续执行到了下一个 `for` 循环，修改了 `i` 的值。这会导致索引错乱，甚至数组越界访问。
+
+
+图片底部的文字给出了标准的修复方案：
+
+> 解决的办法是，在包含所有变量使用的最小范围内声明所有的变量。在例 7.15 中，索引变量的声明应该放在 `for` 循环内部而不是在程序或整个作用域的层级上。更好的做法是，尽可能使用 `foreach` 语句。
+
+
+为了避免这种竞态条件，应将 `i` 的声明限制在局部作用域内：
+
+```systemverilog
+// 修正方案 1：在 for 循环内部声明变量 (SystemVerilog 支持)
+task transmit_fixed;
+    fork
+        // 这里的 i 是局部的，每个迭代或线程上下文独立
+        for (int i=0; i<10; i++)
+            send(data[i]);
+    join_none
+endtask
+
+// 修正方案 2：使用 foreach (推荐)
+task transmit_foreach;
+    foreach(data[idx]) begin
+        // idx 自动作为局部变量处理，且逻辑更清晰
+        send(data[idx]);
+    end
+endtask
+```
+
+通过这种方式，每个循环或线程都有自己独立的索引变量副本，从而消除了数据竞争风险。
+
+
+### 停止线程
+
