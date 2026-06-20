@@ -4359,3 +4359,660 @@ endtask
 
 ### 停止线程
 
+等待回应,或者达到某个最大时延
+
+```SystemVerilog
+parameter TIME_OUT = 1000;
+task check_trans(Transaction tr);
+    fork
+        begin
+            //等待回应
+            fork:time_block
+                begin
+                    wait(bus.cb.addr == tr.addr);
+                    $display("@%0t: transaction %0d received", $time, tr.id);
+                end
+                #TIME_OUT $display("@%0t: timeout", $time);
+            join_any
+            disable fork:time_block;
+            end
+        join_none
+    end
+endtask
+```
+
+停止多个线程
+
+```SystemVerilog
+initial begin
+    check_trans(tr0); //线程0
+    fork
+        begin
+            check_trans(tr1);
+            fork
+                check_trans(tr2);
+            join
+            #(TIME_OUT/2) disable fork;//停止线程1-4,保留线程0
+    end
+    join
+end
+```
+
+```SystemVerilog
+// 例 7.18 使用带标号的 disable 来停止线程
+initial begin
+    check_trans(tr0);               // 线程 0
+    fork                            // 线程 1
+        begin : threads_inner
+            check_trans(tr1);       // 线程 2
+            check_trans(tr2);       // 线程 3
+        end
+        // 停止线程 2 和 3,单独保留线程 0
+        #(TIME_OUT/2) disable threads_inner;
+    join
+end
+```
+
+
+当禁止被多次调用的任务，要小心停止的可能会比预期得多,按照预期,如果你在某个任务内部禁止该任务,就像在任务的返回语句,这也会停止所有由该任务启动的线程,如果该任务已经被多个线程调用,禁止其中的一个将导致它们全部被禁止
+
+```SystemVerilog
+// 例 7.19 使用 disable 标号来停止一个任务
+task wait_for_time_out(int id);
+    if (id == 0)
+        fork
+            begin
+                #2;
+                $display("@%0t: disable wait_for_time_out", $time);
+                disable wait_for_time_out; // 禁用当前任务实例
+            end
+        join_none
+
+    fork : just_a_little
+        begin
+            $display("@%0t: % m: %0d entering thread", $time, id);
+            #TIME_OUT;
+            $display("@%0t: % m: %0d done", $time, id);
+        end
+    join_none
+endtask
+
+initial begin
+    wait_for_time_out(0);       // 衍生线程 0
+    wait_for_time_out(1);       // 衍生线程 1
+    wait_for_time_out(2);       // 衍生线程 2
+
+    #(TIME_OUT * 2) $display("@%0t: All done", $time);
+end
+```
+因为线程0 disable了 wait_for_time_out,所以线程1和2也会被禁止,因此只有线程0会执行完毕
+
+### 线程间通信
+
+System Verilog可以使用时间,旗语和信箱来完成IPC
+
+
+### 事件
+
+Verilog事件可以实现线程间的同步,就像在打电话时一个人等待另一个人的呼叫
+
+
+```verilog
+// 例 7.20 Verilog 中阻塞在一个事件上
+event e1, e2;
+
+initial begin
+    $display("@%0t: 1: before trigger", $time);
+    -> e1;
+    @e2;
+    $display("@%0t: 1: after trigger", $time);
+end
+
+initial begin
+    $display("@%0t: 2: before trigger", $time);
+    -> e2;
+    @e1;
+    $display("@%0t: 2: after trigger", $time);
+end
+```
+
+预期输出
+
+根据图片底部及仿真逻辑，该代码的输出如下：
+
+```text
+@0: 1: before trigger
+@0: 2: before trigger
+@0: 1: after trigger
+@0: 2: after trigger
+```
+
+
+
+- **定义**：`event e1, e2;` 定义了两个同步对象 `e1` 和 `e2`。
+- **零持续时间**：在 Verilog 中，事件是一个“瞬时”的概念。它没有持续时间，仅仅表示一个时间点上的信号跳变或通知。如果错过了触发时刻，等待者将永远等待下去（除非再次被触发）。
+
+
+这段代码巧妙地演示了两个 `initial` 块之间的交互：
+
+1. **时间 0 (Active Region)**：
+   - 两个 `initial` 块同时启动。
+   - **线程 1** 打印 `"1: before trigger"`，然后立即触发事件 `e1` (`-> e1`)。此时 `e1` 处于激活状态。
+   - **线程 2** 打印 `"2: before trigger"`，然后立即触发事件 `e2` (`-> e2`)。此时 `e2` 处于激活状态。
+
+2. **时间 0 (NBA / Monitor Region)**：
+   - **线程 1** 执行到 `@e2;`。由于刚才线程 2 已经触发了 `e2`，且在同一时间步内，线程 1 能够捕获到这个事件，因此它**不会阻塞**，继续向下执行。
+   - **线程 2** 执行到 `@e1;`。同理，由于线程 1 已经触发了 `e1`，线程 2 也能捕获到，因此它也**不会阻塞**。
+
+3. **结果**：
+   - 两个线程都成功通过了事件等待点。
+   - 线程 1 打印 `"1: after trigger"`。
+   - 线程 2 打印 `"2: after trigger"`。
+
+
+- **交叉握手**：这是一个典型的交叉握手模式。线程 1 发 `e1` 等 `e2`，线程 2 发 `e2` 等 `e1`。只要触发发生在等待之前（或在同一时间步的调度顺序允许范围内），程序就能顺利运行。
+- **非阻塞 vs 阻塞**：虽然 `@e` 语法看起来像阻塞赋值，但在本例中，因为事件已经被触发，所以它表现为“非阻塞”通过。如果删除其中任何一个 `->` 语句，对应的另一个线程就会永久挂起（Deadlock）。
+
+
+等待事件的触发
+
+```SystemVerilog
+// 例 7.22 等待事件
+event e1, e2;
+
+initial begin
+    $display("@%0t: 1: before trigger", $time);
+    ->e1;
+    wait (e2.triggered());
+    $display("@%0t: 1: after trigger", $time);
+end
+
+initial begin
+    $display("@%0t: 2: before trigger", $time);
+    ->e2;
+    wait (e1.triggered());
+end
+```
+
+在循环中使用事件
+
+可以使用事件来实现两个线程的同步
+
+如果在循环中使用wait(handshake.triggered())一定要确保在下次等待之前时间可以向前推进,否则你的代码将会进入一个零时延环,原因是wait会在单个事件触发器上反复执行
+
+等待事件导致零时延循环
+
+```SystemVerilog
+forever begin
+//零时延循环
+    wait(handshake.triggered());
+    $display("Received next event");
+    process_in_zero_time();
+end
+```
+
+等待事件 的边沿
+
+```SystemVerilog
+// 例 7.23 等待事件的边沿
+forever begin
+    @handshake;
+    $display("Received next event");
+    process_in_zero_time();
+end
+```
+
+传递事件,SystemVerilog中的事件可以像参数一样传递给子程序
+
+```SystemVerilog
+class Generator；
+    event done;
+    function new(event done)
+       begin
+            this.done = done;   
+       end
+    endfunction
+
+    task run();
+        fork
+            begin
+                ....
+                -> done; // 生成事件
+            end
+        join_none
+    endclass
+
+program automatic test;
+    event gen_done;
+    Generator gen;
+    initial begin
+        gen = new(gen_done); //测试程序实例化
+        gen.run();
+        wait(gen_done.triggered()); // 等待生成事件
+        $display("Received event from generator");
+    end
+endprogram
+```
+
+等待多个事件
+
+解决办法是创建一个新线程并从中衍生子线程,然后保证每个线程阻塞在每个发生器的一个事件上
+
+```SystemVerilog
+event done[N_GENERATORS];
+initial begin
+    foreach (gen[i]) begin
+        gen[i] = new();
+        gen[i].run(done[i]);
+    end
+
+    //通过等待每个事件来等待所有发生器完成
+    foreach(gen[i])
+     fork
+        automatic int k = i;
+        wait(done[k].triggered());
+    join_none
+    wait fork; //等待所有触发器完成
+end
+```
+
+通过对触发事件进行计数来等待多个线程
+
+```SystemVerilog
+event done[N_GENERATORS];
+int done_count;
+initial begin
+    foreach (gen[i]) begin
+        gen[i] = new();
+        gen[i].run(done[i]);
+    end
+
+    //等待所有发生器完成
+    foreach(gen[i])
+    fork
+        automatic int k = i;
+        begin
+            wait(done[k].triggered());
+            done_count++;
+        end
+    join_none
+    wait(done_count == N_GENERATORS); //等待触发
+end
+```
+
+使用线程计数来等待多个线程
+
+```SystemVerilog
+class Generator;
+    static int thread_count = 0;
+    task run();
+        thread_count++;
+        fork
+            begin
+            //这里省略实际工作的代码
+            //当工作完成时,对线程数目减计数
+            thread_count--;
+            end
+        join_none
+    endtask
+endclass
+
+Generator gen[N_GENERATORS];
+initial begin
+    foreach (gen[i]) begin
+        gen[i] = new();
+    end
+    foreach (gen[i]) begin
+        gen[i].run();
+    end
+    wait(gen[0].thread_count == 0); //等待所有线程完成
+end
+```
+
+### 旗语
+
+使用旗语可以实现对同一资源的访问控制
+
+旗语的操作
+
+使用new方法可以创建一个带单个或者多个钥匙的旗语,使用get可以获取一个或者多个钥匙,而put则可以返回一个或者多个钥匙
+
+如果试图获取一个旗语而不希望被阻塞，可以使用try_get()函数,它返回1表示有足够多的钥匙,而返回0表示钥匙不够
+
+```SystemVerilog
+// 例 7.30 用旗语实现对硬件资源的访问控制
+program automatic test (bus_ifc.TB bus);
+    semaphore sem;                // 创建一个旗语
+
+    initial begin
+        sem = new(1);             // 分配 1 个钥匙
+        fork
+            sequencer();          // 产生两个总线事务线程
+            sequencer();
+        join
+    end
+
+    task sequencer;
+        repeat ($urandom % 10)    // 随机等待 0-9 个周期
+            @bus.cb;
+        sendTrans();              // 执行总线事务
+    endtask
+
+    task sendTrans;
+        sem.get(1);               // 获取总线钥匙
+        @bus.cb;                  // 把信号驱动到总线上
+        bus.cb.addr <= t.addr;
+        ...
+        sem.put(1);               // 处理完成时把钥匙返回
+    endtask
+endprogram
+```
+
+### 信箱
+
+把发生器和驱动器想象成具备自治能力的事务处理器对象,它们通过对信道交换数据,每个对象从它的上游对象中得到事务,进行一些处理,然后把它们传递给下游任务,这里的信道必须允许驱动器和接收器异步操作
+
+
+
+
+创建多个对象的良性发生器
+
+```SystemVerilog
+task generator_good(int n,mailbox mbx);
+    Transaction t;
+    repeat(n) begin
+        t = new(); //创建一个新的事务
+        assert(t.randomize());
+        $display("Generated transaction %0d", t.id);
+        mbx.put(t); //将事务放入信箱
+    end
+endtask
+```
+
+接收来自信箱事务的良性驱动器
+
+```SystemVerilog
+task driver(mailbox mbx);
+    Transaction t;
+    forever begin
+        mbx.get(t); //获取来自信箱的事务
+        $display("Received transaction %0d", t.id);
+        //驱动事务到待测设计中
+
+    end
+endtask
+```
+
+测试平台里的信箱
+
+使用信箱实现对象的交换,Generator类
+
+```SystemVerilog
+class Generator;
+    Transaction tr;
+    mailbox mbx;
+    function new(mailbox mbx);
+        this.mbx = mbx;
+    endfunction
+
+    task run(int count);
+    repeat(count) begin
+        tr = new();
+        assert(tr.randomize());
+        $display("Generated transaction %0d", tr.id);
+        mbx.put(tr);
+    end
+    endtask
+endclass
+```
+
+使用信箱实现对象的交换:Driver类
+
+```SystemVerilog
+class Driver;
+    Transaction tr;
+    mailbox mbx;
+    function new(mailbox mbx);
+        this.mbx = mbx;
+    endfunction
+
+    task run();
+    forever begin
+        mbx.get(tr);
+        $display("Received transaction %0d", tr.id);
+        //驱动事务到待测设计中
+    end
+    endtask
+endclass
+```
+
+测试平台程序块
+
+```SystemVerilog
+program automatic mailbox_example(bus_if.TB bus,...);
+    'include "transaction.sv"
+    'include "generator.sv"
+    'include "driver.sv"
+
+    mailbox mbx;
+    Generator gen;
+    Driver drv;
+    int count;
+
+    initial begin
+        count = $urandom_range(50);
+        mbx = new(); // 创建一个信箱
+        gen = new(mbx); // 创建发生器对象
+        drv = new(mbx); // 创建驱动器对象
+
+        fork
+            gen.run(count); // 发生器线程
+            drv.run(count); // 驱动器线程
+        join
+    end
+endprogram
+```
+
+定容信箱
+
+当往信箱里放入多于设定容量的物品,则put会阻塞,直到你从邮箱里搬走物品腾出空间
+
+```SystemVerilog
+`timescale 1ns/1ns
+
+program automatic bounded;
+    mailbox mbx;
+
+    initial begin
+        mbx = new(1);             // 容量为 1
+
+        fork
+            // 生产方线程
+            for (int i=1; i<4; i++) begin
+                $display("Producer: before put(%0d)", i);
+                mbx.put(i);
+                $display("Producer: after put(%0d)", i);
+            end
+
+            // 消费方线程
+            repeat (4) begin
+                int j;
+                #1ns mbx.get(j);
+                $display("Consumer: after get(%0d)", j);
+            end
+        join
+    end
+endprogram
+```
+
+
+使用定容信箱和探视peek来实现线程的同步
+
+以下是从图片中提取的 **SystemVerilog** 代码。这段代码演示了如何使用 **定容邮箱（Bounded Mailbox）** 结合 `peek` 方法来实现生产者和消费者之间的同步。
+
+### 提取的代码
+
+```systemverilog
+// 例 7.41 使用定容信箱实现同步的生产方和消费方
+program automatic synch_peek;
+    mailbox mbx;
+
+    // 使用 7.39 中的生产方
+    class Producer;
+        task run();
+            for (int i=1; i<4; i++) begin
+                $display("Producer: before put(%0d)", i);
+                mbx.put(i);
+                $display("Producer: after put(%0d)", i);
+            end
+        endtask
+    endclass : Producer
+
+    class Consumer;
+        task run();
+            int i;
+            repeat (3) begin
+                mbx.peek(i);             // 探视 mbx 里的整数
+                $display("Consumer: after get(%0d)", i);
+                mbx.get(i);              // 从 mbx 里移出
+            end
+        endtask
+    endclass : Consumer
+
+    Producer p;
+    Consumer c;
+
+    initial begin
+        // 创建信箱、生产方和消费方
+        mbx = new(1);                    // 定容信箱 —— 容量限定为 1!
+
+        p = new();
+        c = new();
+
+        // 使生产方和消费方并发运行
+        fork
+            p.run();
+            c.run();
+        join
+    end
+endprogram
+```
+
+
+1. 核心机制：定容邮箱 (`mbx = new(1)`)
+
+- **容量限制**：这里将邮箱的大小设置为 **1**。这意味着同一时刻，邮箱中最多只能存放一个数据。
+- **同步作用**：这种物理上的“满”状态强制实现了同步。当生产者放入一个数据后，邮箱变满，`put()` 操作会阻塞生产者，直到消费者取走数据腾出空间。这避免了无界邮箱可能导致的“生产者跑得太快，数据堆积”的问题。
+2. `peek` vs `get`
+
+- **`mbx.peek(i)`**：**偷看/窥视**。它读取邮箱头部的数据并赋值给变量 `i`，但 **不会** 将数据从邮箱中移除。如果邮箱为空，它会阻塞等待。
+- **`mbx.get(i)`**：**获取/取出**。它将数据赋值给 `i` 并将其从邮箱中 **彻底删除**，从而腾出空间让生产者可以放入下一个数据。
+
+3. 执行流程分析
+
+由于邮箱容量为 1，执行顺序将被严格锁定为“放一个 -> 看一眼 -> 取走 -> 再放一个...”的交替模式：
+
+1. **初始状态**：邮箱空。
+2. **Producer**：打印 `"before put(1)"`，调用 `put(1)`。邮箱变为满（含 1）。
+3. **Producer**：尝试再次循环或继续执行，但被阻塞在下一个 `put`（如果有的话）或者因为时间片切换。
+4. **Consumer**：被唤醒（或获得时间片），调用 `peek(i)`。看到数据 1，打印 `"after get(1)"`。注意此时邮箱里仍然有 1。
+5. **Consumer**：调用 `get(i)`。数据 1 被移除，邮箱变空。
+6. **Producer**：检测到邮箱有空位，解除阻塞，开始处理数据 2...
+
+这种模式确保了数据处理是严格有序的，并且内存占用被控制在最小范围。
+
+以上即为利用定容邮箱实现生产者与消费者同步的代码逻辑分析。
+
+使用事件实现同步的生产方和消费方
+
+
+
+```systemverilog
+// 例 7.43 使用事件实现同步的生产方和消费方
+program automatic mbx_evt;
+    mailbox mbx;
+    event handshake;
+
+    class Producer;
+        task run;
+            for (int i=1; i<4; i++) begin
+                $display("Producer: before put(%0d)", i);
+                mbx.put(i);
+                @handshake;
+                $display("Producer: after put(%0d)", i);
+            end
+        endtask
+    endclass : Producer
+
+    // 下接例 7.44
+    // 例 7.44 用事件实现同步的生产方和消费方, 接上例
+    class Consumer;
+        task run;
+            int i;
+            repeat (3) begin
+                mbx.get(i);
+                $display("Consumer: after get(%0d)", i);
+                -> handshake;
+            end
+        endtask
+    endclass : Consumer
+
+    Producer p;
+    Consumer c;
+
+    initial begin
+        mbx = new();
+        p = new();
+        c = new();
+        // 使生产方和消费方并发运行
+        fork
+            p.run();
+            c.run();
+        join
+    end
+endprogram
+```
+
+代码解析
+
+核心机制：邮箱 + 事件
+
+- **`mailbox mbx;`**：用于传输数据（整数 `i`）。这里初始化为无界邮箱（`new()`），所以不会因为容量满而阻塞，但为了演示同步逻辑，通常配合有界邮箱使用效果更好。
+- **`event handshake;`**：这是一个“握手”信号。它不携带数据，仅用于通知对方“我已经处理完了”或“你可以继续了”。
+
+生产者逻辑 (`Producer`)
+
+1. 打印 "before put"。
+2. 将数据放入邮箱 `mbx.put(i)`。
+3. **关键点**：`@handshake;`。生产者在这里 **阻塞等待**。它在等待消费者发出信号，表示“我已经取走了数据并处理完毕”。
+4. 收到信号后，打印 "after put"，然后进入下一次循环。
+
+消费者逻辑 (`Consumer`)
+
+1. 从邮箱获取数据 `mbx.get(i)`。
+2. 打印 "after get"。
+3. **关键点**：`-> handshake;`。消费者触发事件，通知生产者：“我已经拿到了数据，你可以继续生产下一个了”。
+
+
+
+这种模式实现了严格的 **一一对应** 同步：
+
+1. 生产者放入数据 -> 阻塞等待。
+2. 消费者取出数据 -> 触发事件。
+3. 生产者收到事件 -> 解除阻塞，继续下一轮。
+
+这种方式常用于需要严格控制生产速率，或者需要在消费者处理完数据后才能进行下一步操作的场景。
+
+以上即为该段代码的逻辑分析与同步机制说明。
+
+
+### 构筑带线程并可实现线程间通信的测试程序
+
+
+
+
+
+
+
+
+
