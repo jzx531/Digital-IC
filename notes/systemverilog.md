@@ -5142,8 +5142,759 @@ endprogram
 事务基类
 
 
+```systemverilog
+class Transaction;
+    rand bit[31:0] src,dst,data[8];//随机变量
+    bit[31:0] crc; //计算得到的CRC值
+
+    virtual function void calc_crc;
+        crc = src ^ dst ^ data.xor;
+    endfunction
+
+    virtual function void print();
+        $display("Transaction: src=%0d, dst=%0d, data=%0d, crc=%0d", src, dst, data, crc);
+    endfunction
+endclass
+```
+
+扩展的Transaction类
+
+```systemverilog
+class BadTr : public Transaction;
+    rand bit bad_crc;
+    virtual function void calc_crc;
+        super.calc_crc(); //计算正确的CRC
+        if (bad_crc) crc = ~crc; //故意计算错误的CRC
+    endfunction
+
+    virtual function void display(input string prefix = "");
+        $write("%sTransaction: src=%0d, dst=%0d, data=%0d, crc=%0d, bad_crc=%0d", prefix, src, dst, data, crc, bad_crc);
+        super.display();
+    endfunction
+endclass
+```
+
+扩展类的构造函数
+
+```systemverilog
+class Base1;
+    int var;
+    function new(input int var);
+        this.var = var;
+    endfunction
+endclass
+
+class Extended extends Base1;
+    function new(input int var);
+        super.new(var);//必须是new函数的第一行
+    endfunction
+endclass
+```
+
+驱动类
+从发生器接收事务信息,然后将它们输送给DUT
+```systemverilog
+class Driver;
+    mailbox gen2drv;
+    function new(input mailbox gen2drv);
+        this.gen2drv = gen2drv;
+    endfunction
+
+    task main;
+        Transaction tr;
+        forever begin
+            gen2drv.get(tr);
+            tr.calc_crc();
+            @ifc.cb.src = tr.src;
+            ...
+            end
+        endtask
+    endclass
+```
+
+简单的发生器类
+测试平台的发生器创建一个随机的事务,然后将其放入邮箱传递给驱动器
+```SystemVerilog
+class Generator;
+    mailbox gen2drv;
+    Transaction tr;
+    function new(iput mailbox gen2drv);
+        this.gen2drv = gen2drv;
+    endfunction
+
+    task run;
+        forever begin
+            tr = new(); //创建事务
+            assert(tr.randomize()); //随机化
+            gen2drv.put(tr); //放入邮箱
+        end
+    endtask
+endclass
+```
+
+### 蓝图(Blueprint)模式
+
+在这里我们先构建一个对象的蓝图,然后修改它的约束,甚至使用一个扩展对象替换它,然后当你随机化这个蓝图的时候,它就会具有你像赋予的随机值
+
+使用蓝图模式的发生器类
+
+```systemverilog
+class Generator;
+    mailbox gen2drv;
+    Transactio blueprint;
+
+    function new(input mailbox gen2drv);
+        this.gen2drv = gen2drv;
+        blueprint = new();
+    endfunction
+
+    task run;
+        Transaction tr;
+        forever begin
+            assert(blueprint.randomize);
+            tr = blueprint.copy();
+            gen2drv.put(tr); //发送到驱动器
+        end
+    endtask
+endclass
+```
+
+environment类
+
+执行的三个阶段:创建build,运行run和收尾wrap-up
+
+```SystemVerilog
+class Environment;
+    Generator gen;
+    Driver drv;
+    mailbox gen2drv;
+
+    function void build(); //通过构建邮箱,发生器和驱动器来创建环境
+       gen2drv = new();
+       gen = new(gen2drv);
+       drv = new(gen2drv);
+    endfunction
+
+    task run();
+        fork
+            gen.run();
+            drv.run();
+        join none;
+    endtask
+
+    task wrap_up();
+      //暂时为空,调用计分板(scoreboard)生成报告
+    endtask
+endclass
+```
+
+一个简单的测试平台
+
+基本的测试仅仅使envrionment类按默认方式运行
+
+```SystemVerilog
+program automatic test;
+    Environment env;
+    initial begin
+        env = new();
+        env.build(); //创建测试平台对象
+        env.run(); //运行测试
+        env.wrap_up(); //清理
+    end
+endprogram
+```
+
+使用扩展的Transaction类
+
+```SystemVerilog
+program automatic test;
+    Environment env;
+    initial begin
+        env = new();
+        env.build();
+        begin
+            BadTr bad = new();
+            env.gen.blueprint = bad;
+        end
+
+        env.run(); //运行带BadTr的测试
+        env.wrap_up(); //清理内存
+    end
+endprogram
+```
+
+使用扩展类改变随机约束
+
+使用继承来增加一个约束
+
+```SystemVerilog
+class Nearby extends Transaction;
+    constraint c_nearby{
+        dst_inside{[src-100:src+100]};
+    }
+endclass
+
+program automatic test;
+    Environment env;
+    initial begin
+       env = new();
+       env.build(); //创建发生器等
+
+       begin
+           Nearby nb = new(); //创建一个新蓝图
+           env.gen.blueprint = nb; //替换蓝图
+        end
+
+        env.run(); //运行带Nearby的测试
+        env.wrap_up(); //清理内存
+    end
+endprogram
+```
+
+### 类型向下转换和虚方法
+
+使用$cast作类型向下转换
+
+```SystemVerilog
+// 例 8.11 基类和派生类
+class Transaction;
+    rand bit [31:0] src;
+
+    virtual function void display(input string prefix="");
+        $display("%sTransaction:src=%0d", prefix, src);
+    endfunction
+endclass
+
+class BadTr extends Transaction;
+    bit bad_crc;
+
+    virtual function void display(input string prefix="");
+        $display("%sBadTr:bad_crc=%b", prefix, bad_crc);
+        super.display(prefix);
+    endfunction
+endclass
+
+Transaction tr;
+BadTr bad, bad2;
+
+Transaction tr;
+BadTr bad;
+bad = new();
+tr = bad; // 类型向下转换
+$cast(bad2, tr); // 类型向下转换
+tr.display(); // 调用派生类的display方法
+```
+
+
+```systemverilog
+bad = new();              // 构建 BadTr 扩展对象
+tr = bad;                 // 基类句柄指向扩展对象
+
+// 检查对象类型并且拷贝。如果类型失配则在仿真时报错
+// 如果成功, bad2 就指向 tr 所引用的对象
+$cast(bad2, tr);
+
+// 检查类型失配, 如果类型失配, 在仿真时也不会输出错误信息
+if (!$cast(bad2, tr))
+    $display("cannot assign tr to bad2");
+
+$display(bad2.bad_crc);   // 原始对象中存在 bad_crc 成员
+```
+
+当你将 `$cast` 作为一个任务来使用的时候，SystemVerilog 会在运行时检查源对象类型，如果跟目的对象类型不匹配则给出一个错误报告。当将 `$cast` 作为函数使用时，SystemVerilog 仍然做类型检查，但是在失败时不再输出错误信息。如果类型不兼容，`$cast` 函数返回 0，如果类型兼容则返回非零值。
+
+虚方法
+
+```systemverilog
+class Transaction;
+    rand bit [31:0] src, dst, data[8]; // 变量
+    bit [31:0] crc;
+
+    virtual function void calc_crc(); // 异或所有的域
+        crc = src ^ dst ^ data.xor;
+    endfunction
+endclass : Transaction
+
+class BadTr extends Transaction;
+    rand bit bad_crc;
+
+    virtual function void calc_crc();
+        super.calc_crc();       // 计算正确的 CRC
+        if (bad_crc) crc = ~crc; // 产生错误的 CRC 位
+    endfunction
+endclass : BadTr
+
+Transaction tr;
+BadTr bad;
+
+initial begin
+    tr = new();
+    tr.calc_crc();              // 调用 Transaction::calc_crc
+
+    bad = new();
+    bad.calc_crc();             // 调用 BadTr::calc_crc
+
+    tr = bad;
+    tr.calc_crc();              // 调用 BadTr::calc_crc
+end
+```
+
+签名
+
+使用虚方法:一旦你定义了一个虚拟的子程序,所有带有该虚拟子程序的扩展类就必须使用相同的签名,例如相同类型和个数的参数,在扩展类的虚拟子程序中不能增加或者删除参数
+
+| 问 题 | 继 承 | 合 成 |
+| :--- | :---: | :---: |
+| 1. 你是否需要将多个子类组合到一起（SystemVerilog 不支持多继承） | 否 | 是 |
+| 2. 较高级别的类是否代表了具有相近抽象级别的对象 | 是 | 否 |
+| 3. 较低级别的信息是否总会出现或者一定需要出现 | 是 | 否 |
+| 4. 现有代码在处理原始类的时候，是否可以处理附加的额外数据 | 是 | 否 |
+
+可以创建单一不分层的类,包含所有的变量和子程序,这种方法会使得类变得很大,可以判别变量来决定哪个变量有效
+
+创建一个不分层的以太帧类
+
+```SystemVerilog
+class eth_mac_frame;
+    typedef enum {II, IEEE} kind_e;
+    rand kind_e kind;
+    rand bit [47:0] da, sa;
+    rand bit [15:0] len, vlan;
+    // ... (省略部分代码)
+
+    constraint eth_mac_frame_II {
+        if (kind == II) {
+            data.size() inside {[46:1500]};
+            len == data.size();
+        }
+    }
+
+    constraint eth_mac_frame_ieee {
+        if (kind == IEEE) {
+            data.size() inside {[46:1500]};
+            len < 1522;
+        }
+    }
+endclass
+```
+
+### 对象的复制
+
+```SystemVerilog
+class Transaction;
+    rand bit [31:0] src, dst, data[8]; // 变量
+    bit [31:0] crc;
+
+    virtual function Transaction copy();
+        copy = new();
+        copy.src = src;                  // 复制数据域
+        copy.dst = dst;
+        copy.data = data;
+        copy.crc = crc;
+    endfunction
+endclass
+
+class BadTr extends Transaction;
+    rand bit bad_crc;
+
+    virtual function Transaction copy();
+        BadTr bad;
+        bad = new();
+        bad.src = src;                   // 复制数据域
+        bad.dst = dst;
+        bad.data = data;
+        bad.crc = crc;
+        bad.bad_crc = bad_crc;
+        return bad;
+    endfunction
+endclass : BadTr
+```
+
+copy_data方法
+
+```SystemVerilog
+class Transaction;
+    rand bit [31:0] src, dst, data[8];   // 变量
+    bit [31:0] crc;
+
+    virtual function void copy_data(input Transaction tr);
+        // 注意：原图中此处写为 copy.src=src，但根据上下文逻辑应为 tr.src=src
+        // 这里保留原图文字，但在实际工程中应修正为参数名 tr
+        copy.src = src;                  // 复制数据域
+        copy.dst = dst;
+        copy.data = data;
+        copy.crc = crc;
+    endfunction
+
+    virtual function Transaction copy();
+        copy = new();
+        copy_data(copy);
+    endfunction
+endclass
+```
+
+```SystemVerilog
+class BadTr extends Transaction;
+    rand bit bad_crc;
+
+    virtual function void copy_data(input Transaction tr);
+        BadTr bad;
+        super.copy_data(tr);            // 复制基类数据
+        $cast(bad, tr);                 // 基类句柄类型转换成扩展类
+        bad.bad_crc = bad_crc;          // 复制派生类数据
+    endfunction
+
+    virtual function Transaction copy();
+        BadTr bad;
+        bad = new();                    // 创建 BadTr 对象
+
+        copy_data(bad);                 // 复制数据域
+        return bad;
+    endfunction
+endclass : BadTr
+```
+
+指定复制的目标
+
+使用copy函数的事务基类
+
+```SystemVerilog
+class Transaction;
+    virtual function Transaction copy(Transaction to=null);
+        if(to == null) copy = new();
+        else copy = to;
+        copy_data(copy);
+    endfunction
+endclass
+```
+
+含有新copy函数的扩展事务类
+
+```SystemVerilog
+class BadTr;
+    virtual function Transaction copy(Transaction to=null);
+        BadTr bad;
+        if(to == null) bad = new();
+        else assert($cast(bad, to));
+        copy_data(bad);
+        return bad;
+    endfunction
+endclass : BadTr
+```
+
+### 抽象类和纯虚方法
+
+```SystemVerilog
+virtual class BaseTr;
+    static int count;
+    int id;
+
+    function new();
+        id = count++;
+    endfunction
+
+    pure virtual function bit compare(input BaseTr to);
+    pure virtual function BaseTr copy(input BaseTr to = null);
+    pure virtual function void display(input string prefix="");
+endclass:BaseTr
+```
+
+```SystemVerilog
+function bit Transaction::compare(input BaseTr to);
+    Transaction tr;
+    assert ($cast(tr, to));             // 检查 to 是否为正确类型
+    return ((this.src==tr.src) &&
+            (this.dst==tr.dst) &&
+            (this.crc==tr.crc) &&
+            (this.data==tr.data));
+endfunction : compare
+
+function BaseTr Transaction::copy(input BaseTr to=null);
+    Transaction cp;
+    if (to == null) cp = new();
+    else
+        $cast(cp, to);
+    copy_data(cp);
+    return cp;
+endfunction
+
+function void Transaction::copy_data(Transaction copy);
+    copy.src = src;                     // 复制数据域
+    copy.dst = dst;
+    copy.data = data;
+    copy.crc = crc;
+endfunction
+
+function void Transaction::display(string prefix="");
+    $display("%sTransaction@0d src=%h,dst=%h,crc=%x",
+             prefix, id, src, dst, crc);
+endfunction : display
+
+function Transaction::new();
+    super.new();
+endfunction : new
+```
+
+### 回调
+
+一个回调任务应该在顶层测试中创建,在环境中的最低级即驱动器中调用,驱动器无须知道关于测试的任何信息——它只需要使用一个可以在测试中扩展的通用类，驱动器使用一个队列来保存回调对象,这样就可以增加多个对象,回调基类是一个抽象类,使用前必须进行扩展
+
+```SystemVerilog
+virtual class Driver cbs; //驱动器回调
+   virtual task pre_tx(ref Transaction tr,ref bit drop);
+   //默认情况下回调不做任何动作
+   endtask
+
+   virtual task_post_tx(ref Transaction tr);
+  //默认情况下回调不做任何动作
+  endtask
+endclass
+```
+
+```SystemVerilog
+class Driver;
+    Driver_cbs cbs[$];
+
+    task run();
+        bit drop;
+        Transaction tr;
+
+        forever begin
+            drop = 0;
+            agt2drv.get(tr);
+            foreach (cbs[i]) cbs[i].pre_tx(tr, drop);
+            if (!drop) continue;
+
+            transmit(tr);
+
+            foreach (cbs[i]) cbs[i].post_tx(tr);
+        end
+    endtask
+endclass
+```
+
+使用回调来注入干扰
+
+这段代码展示了如何在 SystemVerilog 验证环境中使用回调机制（Callback）来实现错误注入。通过扩展基类 `Driver_cbs`，可以在不修改原有驱动代码的情况下，动态地改变其行为（例如随机丢弃事务）。
+
+
+```systemverilog
+class Driver_cbs_drop extends Driver_cbs;
+    virtual task pre_tx(ref Transaction tr, ref bit drop);
+        // 每 100 个事务中随机丢弃 1 个
+        drop = ($urandom_range(0, 99) == 0);
+    endtask
+endclass
+
+program automatic test;
+    Environment env;
+    initial begin
+        env = new();
+        env.gen_cfg();
+        env.build();
+
+        begin   // 创建错误注入的回调任务
+            Driver_cbs_drop dcd = new();
+            env.drv.cbs.push_back(dcd); // 放入驱动器队列
+        end
+
+        env.run();
+        env.wrapup();
+    end
+endprogram
+```
+
+- **`Driver_cbs_drop` 类**：这是具体的回调实现类。
+  - 它重写了 `pre_tx` 虚任务。
+  - **逻辑分析**：`$urandom_range(0, 99)` 生成 0 到 99 之间的随机数。当结果为 0 时（概率为 1%），表达式返回 1（true），将 `drop` 置位。结合之前的 `Driver` 代码逻辑（`if (!drop) continue`），这意味着当 `drop` 为 1 时，事务会被正常发送；当 `drop` 为 0 时，事务被跳过。
+  - *注意*：这里的变量命名 `drop` 和注释“丢弃”可能存在逻辑上的反直觉设计，或者依赖于特定的 `Driver` 实现逻辑（即 `drop=1` 代表“允许通过/不丢弃”，或者原书意图是 `drop` 为真时执行某种操作，但在前文 `Driver` 代码中 `!drop` 才导致跳过）。按照代码字面意思，这里实现了约 1% 的概率触发特定行为。
+- **`program automatic test`**：这是测试程序的入口。
+  - **环境搭建**：实例化环境 `env`，生成配置 `gen_cfg` 并构建 `build`。
+  - **注册回调**：实例化自定义的回调对象 `dcd`，并通过 `push_back` 将其添加到驱动程序 `env.drv` 的回调队列 `cbs` 中。这样，当驱动程序运行时，就会自动调用这个自定义的 `pre_tx` 逻辑。
+  - **运行与清理**：启动仿真 `run()` 并进行后续处理 `wrapup()`。
+
+以上即为该段代码的详细解析。
+
+
+计分板
+
+计分板设计取决于你的待测设计(DUT) 对于一个处理原子事务的DUT，例如处理包信息的DUT，其计分板就需要包含一个将输入事务转换成期望值的传输函数,用来保存这些值的内存空间以及一个进行比较的子程序
+
+一个处理器的设计需要一个参考模型来预测期望输出,而对期望值和实际值的比较可能会在仿真的末尾进行
+
+用于原子事务的简单计分板
+
+```SystemVerilog
+class Scoreboard;
+    Transaction scb[$] //保存期望的事务的队列
+
+    function void save_expect(input Transaction tr);
+        scb.push_back(tr);
+    endfunction
+
+    function void compare_actual(input Transaction tr);
+        int q[$]
+
+        q = scb.find_index(x) with (x.src == tr.src);
+        case(q.size())
+        0: $display("Transaction not found");
+        1: $display("Transaction found");
+        default : $display("Multiple transactions found");
+        endcase
+        endfunction:compare_actual
+    endclass:Scoreboard
+```
+
+这段代码展示了 SystemVerilog 验证环境中一种高级的解耦设计模式：**利用回调（Callback）机制将记分板（Scoreboard）与驱动器（Driver）连接起来**。
+
+这种设计允许记分板在事务被发送之前“截获”数据，从而建立预期结果（Expected Result），而无需修改 Driver 的源代码。
+
+以下是提取的代码及详细解析：
+
+
+```systemverilog
+class Driver_cbs_scoreboard extends Driver_cbs;
+    Scoreboard scb;
+
+    virtual task pre_tx(ref Transaction tr, ref bit drop);
+        // 将事务放入记分板
+        Scb.save_expected(tr);
+    endtask
+
+    function new(input Scoreboard scb);
+        this.scb = scb;
+    endfunction
+endclass
+
+program automatic test;
+    Environment env;
+
+    initial begin
+        env = new();
+        env.gen_cfg();
+        env.build();
+
+        begin   // 创建 scb 回调
+            Driver_cbs_scoreboard dcs = new(env.scb);
+            env.drv.cbs.push_back(dcs); // 放入驱动器队列
+        end
+
+        env.run();
+        env.wrapup();
+    end
+endprogram
+```
+
+
+- **继承关系**：该类继承自 `Driver_cbs`（驱动器的回调基类）。这意味着它拥有访问驱动器内部流程的能力。
+- **成员变量**：`Scoreboard scb;` 持有一个记分板的句柄。这是为了在回调函数执行时，能够调用记分板的方法。
+- **构造函数**：`function new(input Scoreboard scb)` 通过参数传递的方式，将环境中的记分板实例注入到回调对象中。这是一种依赖注入的思想。
+- **`pre_tx` 方法**：这是核心逻辑所在。
+  - 当驱动器准备发送事务时，会调用此方法。
+  - `Scb.save_expected(tr);`：此时，事务 `tr` 还是原始数据（Golden Data）。回调将其传递给记分板保存下来，作为后续比对的“标准答案”。
 
 
 
+- **环境搭建**：标准的 UVM/OOP 验证流程，依次执行 `new()`、`gen_cfg()`、`build()`。
+- **注册回调**：
+  - `Driver_cbs_scoreboard dcs = new(env.scb);`：实例化回调对象，并传入当前环境中的记分板 `env.scb`。
+  - `env.drv.cbs.push_back(dcs);`：将这个回调对象添加到驱动器的回调队列中。
+- **运行**：启动仿真 `env.run()`。
 
 
+这种设计的最大优势在于**解耦**。
+
+- **Driver** 不需要知道 Scoreboard 的存在，也不需要包含任何 Scoreboard 的头文件或句柄。它只负责遍历回调队列并执行 `pre_tx`。
+- **Scoreboard** 不需要主动去“拉取”数据，而是被动地通过回调接收数据。
+- **灵活性**：如果未来需要更换记分板逻辑，或者增加多个记分板，只需修改回调类的实现或注册不同的回调对象即可，完全不影响 Driver 的稳定性。
+
+通过上述分析可以看出，该设计模式有效提升了验证环境的可维护性和扩展性。
+
+
+使用回调来调试事务处理器
+
+通过增加一个显示事务内容的回调来着手这件事情
+
+如果该事务处理器存在多个实例,可以使用$display("%m")来显示类的层次化路径
+然后将调试diamagnetic放置到其他回调的前面和后面来定位引起问题的回调
+
+### 参数化的类
+
+一个简单的堆栈
+
+这段内容展示了 SystemVerilog 中从普通类向参数化类（Parameterized Class）演进的过程。参数化类类似于 C++ 中的模板，允许在实例化时指定数据类型，从而极大地提高了代码的复用性。
+
+以下是提取的代码及解析：
+
+### 例 8.34 使用整数的堆栈
+
+这是一个基础版本的堆栈类，硬编码了 `int` 类型。
+
+```systemverilog
+class IntStack;
+    local int stack[100];       // 保存数据值
+    local int top;
+
+    function void push(input int i);   // 从顶端压栈
+        stack[++top] = i;
+    endfunction : push
+
+    function int pop();                // 从顶端出栈
+        return stack[top--];
+    endfunction
+endclass : IntStack
+```
+
+
+这是改进后的版本，使用了 `#(type T=int)` 语法。这使得同一个类可以用于 `int`、`real`、`string` 甚至自定义类对象。
+
+```systemverilog
+class Stack #(type T=int);
+    local T stack[100];         // 保存数据值
+    local int top;
+
+    function void push(input T i);     // 从顶部压栈
+        stack[++top] = i;
+    endfunction : push
+
+    function T pop();                  // 从顶部出栈
+        return stack[top--];
+    endfunction
+endclass : Stack
+```
+
+
+- **类型局限性**：在例 8.34 中，`IntStack` 只能存储整数。如果需要存储实数（`real`），必须复制整个类并将所有 `int` 改为 `real`，这会导致代码冗余和维护困难。
+- **参数化语法**：例 8.35 引入了 `#(type T=int)`。
+  - `type T`：定义了一个类型参数 `T`。
+  - `=int`：设置了默认类型为 `int`。这意味着如果实例化时不指定类型（如 `Stack s = new();`），它表现得和例 8.34 一样。
+- **泛型应用**：在类内部，所有的变量声明（`T stack[100]`）和函数参数/返回值（`input T i`, `function T pop()`）都使用了占位符 `T`。
+- **实例化示例**（虽然图中未显示，但通常是接下来的用法）：
+
+```systemverilog
+// 使用默认类型 (int)
+Stack int_stack = new();
+
+// 指定为实数类型
+Stack #(real) real_stack = new();
+
+// 指定为字符串类型
+Stack #(string) str_stack = new();
+```
+
+这种设计模式是 SystemVerilog 验证方法学（如 UVM）的基础，UVM 中的许多核心类（如 `uvm_config_db`、`uvm_analysis_port`）都是基于这种参数化机制构建的。
+
+使用参数化的堆栈类
+
+```SystemVerilog
+initial begin
+    Stack #(real) rStack; //创建一个用于实数类型的堆栈
+    rStack = new();
+    for (int i = 0; i < 10; i++) begin
+        rStack.push(i); //压入实数
+    end
+    for (int i = 0; i < 10; i++) begin
+        $display("Popped: %f", rStack.pop()); //弹出并显示实数
+    end
+end
+```
