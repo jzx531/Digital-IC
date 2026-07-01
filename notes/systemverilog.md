@@ -5898,3 +5898,198 @@ initial begin
     end
 end
 ```
+
+## 功能覆盖率
+
+功能覆盖率用来衡量哪些设计已经被测试程序测试过的一个指标
+
+比如如果设计与总线相连,就需要对设计和总线之间全部可能的交互方式进行测试‘
+
+```mermaid
+flowchart TD
+    %% 定义节点样式
+    classDef docShape fill:#fff,stroke:#333,stroke-width:2px;
+    classDef processShape fill:#fff,stroke:#333,stroke-width:2px;
+    classDef dbShape fill:#fff,stroke:#333,stroke-width:2px;
+    classDef decisionShape fill:#fff,stroke:#333,stroke-width:2px;
+
+    %% 节点定义
+    Spec[设计规范]:::docShape
+    Plan[验证计划]:::docShape
+    Design[设计]:::processShape
+    TestSet[测试集]:::processShape
+    DB[(覆盖率数据库)]:::dbShape
+    Decision{是否通过?}:::decisionShape
+
+    %% 布局控制：使用不可见连线强制左右布局
+    Spec ~~~ Plan
+
+    %% 主要流程连线
+    Spec ==> Plan
+    Spec ==> Design
+    Plan ==> TestSet
+    
+    Design ==> DB
+    TestSet ==> DB
+    
+    DB ==> Decision
+
+    %% 循环回路（否 -> 调试 -> 设计）
+    Decision -- 否 --> DebugLoop[调试]
+    DebugLoop ==> Design
+
+    %% 循环回路（是 -> 覆盖率分析 -> 测试集）
+    Decision -- 是 --> AnalysisLoop[覆盖率分析]
+    AnalysisLoop ==> TestSet
+
+    %% 调整连线样式以接近原图（红色箭头）
+    linkStyle default stroke:red,stroke-width:2px;
+```
+
+断言覆盖率
+
+断言用于一次性或在一段时间内核对两个设计信号之间关系的声明性代码
+
+断言可以用于局部变量,并且可以进行简单的数据检查
+
+断言用于查找错误,例如两个信号是否应该互斥或者请求是否被许可等
+
+### 功能覆盖率简单例子
+
+```SystemVerilog
+program automatic test(busifc.TB ifc);
+    class Transaction;
+        rand bit[31:0] data;
+        rand bit[2:0] port; //八种端口port数据
+    endclass
+
+    covergroup CovPort;
+        coverpoint tr.port; //测量覆盖率
+    endgroup
+
+    initial begin
+        Transaction tr;
+        CovPort ck;
+        ck = new();  //实例化组
+        tr = new();
+        repeat(32) begin // 运行几个周期
+            assert(tr.randomize); //创建一个事务
+            ifc.cb.port<=tr.port; //并发送到接口上
+            ifc.cb.data<=tr.data; 
+            ck.sample(); //更新覆盖率
+            @ifc.cb;     //等待一个周期
+        end
+    end
+endprogram
+```
+
+
+一个简单对象的覆盖率报告
+
+**Coverpoint Coverage report**
+**CoverageGroup:** CovPort
+**Coverpoint:** tr.port
+
+- **Coverage:** 87.50
+- **Goal:** 100
+- **Number of Expected auto- bins:** 8
+- **Number of User Defined Bins:** 0
+- **Number of Automatically Generated Bins:** 7
+- **Number of User Defined Transitions:** 0
+
+Automatically Generated Bins
+
+| Bin | # hits | at least |
+| :--- | :--- | :--- |
+| auto[1] | 7 | 1 |
+| auto[2] | 7 | 1 |
+| auto[3] | 1 | 1 |
+| auto[4] | 5 | 1 |
+| auto[5] | 4 | 1 |
+| auto[6] | 2 | 1 |
+| auto[7] | 6 | 1 |
+
+---
+
+### 覆盖组详解
+
+覆盖组与类相似—————— 一次定义后便可以进行多次实例化
+它含有覆盖点,选项,形式参数和可选触发,一个覆盖组包含了一个或多个数据点,全都在同一时间采集
+
+覆盖组应该带有明白无误的名字,用来表明要测量的对象,并且尽可能与验证计划关联
+
+覆盖组可以定义在类里,也可以定义在程序或模块层次上
+
+类里的功能覆盖率
+
+```SystemVerilog
+class Transaction;
+    Transaction tr;
+    mailbox mbx_in;
+    covergroup CovPort;
+        coverpoint tr.port;
+    endgroup
+
+    function new(mailbox mbx_in);
+        CovPort = new();   //实例化覆盖组
+        this.mbx_in = mbx_in;
+    endfunction
+
+    task main;
+        forever begin
+            tr = mbx_in.get;  //获取下一个事务
+            ifc.cb.port<= tr.port; //发送到待测设计中
+            ifc.cb.data<= tr.data;
+            CovPort.sample(); //收集覆盖率
+        end
+    endtask
+    endclass
+```
+
+### 覆盖组的触发
+
+功能覆盖率的两个主要部分是采集的数据和数据被采样的时刻
+当这些新数据都准备好了以后,测试平台便会触发覆盖组
+
+这个过程可以通过直接使用sample函数来完成
+
+或者在covergroup的定义中采样阻塞表达式,阻塞表达式可以使用wait或者@来实现在信号或事件上的阻塞
+
+使用回调函数进行采样
+
+```SystemVerilog
+program automatic test;
+    Environment env;
+
+    initial begin
+        Driver_cbs_coverage dcc;
+        env = new();
+        env.gen_cfg();
+        env.build();
+        //创建并登记覆盖率回调函数
+        dcc = new();
+        env.drv.cbs.push_back(dcc); //放进驱动器的队列里
+        env.run();
+        env.wrap_up();
+    end
+endprogram
+
+//用于测量功能覆盖率的回调函数
+class Driver_cbs_coverage extends Driver_cbs;
+    covergroup CovPort;
+    .....
+    endgroup
+    virtual task post_tx(Transaction tr);
+        CovPort.sample(); //采样覆盖率数值
+    endtask
+endclass
+```
+
+使用事件触发的覆盖组
+
+
+
+
+
+
+
