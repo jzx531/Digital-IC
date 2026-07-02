@@ -6087,9 +6087,522 @@ endclass
 
 使用事件触发的覆盖组
 
+代码展示了 **SystemVerilog 中断言（SVA）与功能覆盖率（Functional Coverage）结合使用** 的典型场景，分为两个模块：`mem`（设计/验证模块）和 `test`（测试程序块）。以下是逐部分解析：
+
+
+一、例9.9：带 SystemVerilog 断言的模块 `mem`
+```systemverilog
+module mem(simple_bus sb);
+    bit[7:0] data, addr;   // 8位数据信号和地址信号
+    event write_event;     // 事件类型变量，用于跨模块同步触发
+
+    cover property          // 覆盖属性（Cover Property），属于SVA的“覆盖率”特性
+        (@(posedge sb.clock) sb.write_ena==1) -> write_event;
+endmodule
+```
+
+关键语法与作用：
+1. **接口实例化**：`simple_bus sb` 是接口（Interface）类型的端口，用于连接模块与外部信号（如时钟、写使能等）。
+2. **信号声明**：`bit[7:0] data, addr` 定义8位宽的数据和地址信号；`event write_event` 是**事件（Event）**，用于在不同模块间传递“触发信号”。
+3. **覆盖属性（Cover Property）**：
+   - 格式：`cover property (条件) -> 动作;`
+   - 语义：**当 `(posedge sb.clock)`（时钟上升沿）时，若 `sb.write_ena==1`（写使能有效），则触发 `write_event` 事件**。
+   - 作用：通过 SVA 的“覆盖属性”，将“写操作发生”这一行为转化为**事件触发**，为后续覆盖率收集提供“采样时机”。
+
+
+二、例9.10：使用 SVA 触发覆盖组的测试程序 `test`
+```systemverilog
+program automatic test(simple_bus sb);
+    covergroup Write_cg @($root.top.m1.write_event);  // 覆盖组，由 write_event 触发采样
+        coverpoint $root.top.m1.data;  // 覆盖点：监测 m1 模块的 data 信号
+        coverpoint $root.top.m1.addr;  // 覆盖点：监测 m1 模块的 addr 信号
+    endgroup
+
+    Write_cg wcg;  // 覆盖组实例化
+
+    initial begin
+        wcg = new();       // 动态创建覆盖组实例
+        // 在此处添加激励（如驱动 sb 的信号，模拟读写操作）
+        sb.write_ena <= 1; // 示例：拉高写使能（实际需更完整的激励序列）
+        ...                // 其他激励逻辑
+        #10000 $finish;    // 仿真10000时间单位后结束
+    end
+endprogram
+```
+
+关键语法与作用：
+1. **Program Block**：`program automatic test(...)` 是 SystemVerilog 专为**测试平台（Testbench）** 设计的结构，避免与设计模块的竞争冒险（Race Condition）。
+2. **覆盖组（Covergroup）**：
+   - 定义：`covergroup Write_cg @(触发事件);` 表示**当 `write_event` 触发时，自动采样所有 `coverpoint`**。
+   - 覆盖点（Coverpoint）：`coverpoint $root.top.m1.data` 和 `coverpoint $root.top.m1.addr` 分别监测 `m1` 模块的 `data` 和 `addr` 信号的取值分布。
+   - 层次引用 `$root.top.m1.xxx`：`$root` 指向仿真顶层，`top` 是顶层模块名，`m1` 是 `mem` 模块的实例名（假设顶层中 `mem` 被实例化为 `m1`）。
+3. **覆盖组实例化与初始化**：`Write_cg wcg;` 声明覆盖组变量，`wcg = new();` 在 `initial` 块中动态创建实例（确保覆盖率统计生效）。
+4. **激励与仿真控制**：`initial` 块中先初始化覆盖组，再添加激励（如驱动 `sb.write_ena`），最后用 `#10000 $finish` 控制仿真时长。
+
+
+整体逻辑：“断言触发 → 覆盖率采样”的协作流程
+1. **`mem` 模块的行为**：当时钟上升沿且写使能有效时，通过 `cover property` 触发 `write_event` 事件。
+2. **`test` 程序的响应**：`Write_cg` 覆盖组监听 `write_event`，一旦事件触发，立即采样 `m1.data` 和 `m1.addr` 的当前值，并记录到覆盖率数据库。
+3. **核心目的**：利用 SVA 的“事件触发”能力，精准控制**功能覆盖率的采样时机**——仅在“写操作发生”时收集 `data` 和 `addr` 的覆盖信息，避免无效采样，提升覆盖率分析的针对性。
 
 
 
+- **接口（Interface）**：`simple_bus` 是自定义接口，通常封装时钟、写使能、数据、地址等信号，简化模块间连接。
+- **事件（Event）**：`event` 是 SystemVerilog 的同步原语，类似“信号量”，用于跨模块传递“某事已发生”的通知。
+- **覆盖属性 vs 普通断言**：`cover property` 不用于“检查错误”，而是**统计“某行为发生的次数”**，属于覆盖率驱动的验证手段。
+
+
+这段代码的核心价值是演示 **“如何用 SVA 的事件机制，联动功能覆盖率的采样逻辑”**，是复杂验证环境中“精准覆盖率收集”的典型实践。
+
+---
+
+这部分涉及不少 SVA 概念，需要我帮你整理一份‘常用断言与覆盖率语法速查表’方便以后查阅吗？
+
+
+当在覆盖点指定一个变量或者表达式时,SystemVerilog会创建很多仓来记录每个数值被捕捉到的次数
+这些仓是衡量功能覆盖率的基本单位,如果采样一个单比特变量,最多会有两个仓被创建
+
+在每次访问的末尾所有带标的仓会被汇聚到一个新创建的数据库里
+
+
+个体仓和总体覆盖率
+
+  为了计算一个点上的覆盖率，首先必须确定所有可能数值的个数,这也被称为域
+
+一个仓中可能有一个或者多个值,覆盖率就是采样值的数目除以域中仓的数目
+
+自动创建仓: 对于一个位宽为N的表达式,有2^N个可能的值,因此会自动创建2^N个仓
+
+限制自动创建仓的数目
+
+覆盖组选项auto_bin_max指明了自动创建仓的最大数目,缺省值是64,如果覆盖点变量或表达式的值域超过指定的最大值,SystemVerilog会把值域范围平均分配给auto_bin_max个仓,例如一个16比特变量有65536个可能值,所以64个bin中的每一个都覆盖了1024个值
+
+```SystemVerilog
+covergroup CovPort;
+    coverpoint tr.port
+    {
+        options.auto_bin_max = 2; //分成2个仓
+    }
+endgroup
+```
+
+在所有覆盖点中使用auto_bin_max
+
+```SystemVerilog
+covergroup CovPort;
+    options.auto_bin_max = 2; //影响port和data
+    coverpoint tr.port;
+    coverpoint tr.data;
+endgroup
+```
+
+对表达式进行采样
+
+```SystemVerilog
+class Transaction;
+    rand bit[2:0] hdr_len; //范围： 0:7
+    rand bit[3:0] payload_len; //范围： 0:15
+    rand bit[3:0] kind; //范围0:15
+endclass
+
+Transaction tr;
+
+covergroup CovLen;
+    len16: coverpoint(tr.hdr_len + tr.payload_len);
+    len32: coverpoint(tr.hdr_len + tr.payload_len + 5'b0);
+endgroup
+```
+
+使用用户自定义的仓发现漏洞
+
+```SystemVerilog
+covergroup CovLen;
+    len:coverpoint(tr.hdr_len + tr.payload_len + 5'b0)
+    {bins len[]= {[0:23]};}
+endgroup
+```
+
+命名覆盖点的仓
+
+指定仓名:
+
+```SystemVerilog
+covergroup CovKind;
+    coverpoint tr.kind {
+        bins zero = {0};            // 1个仓代表 kind==0
+        bins lo = {[1:3], 5};       // 1个仓代表 1:3 和 5 的值
+        bins hi[] = {[8:$]};        // 8个独立的仓: 8...15
+        bins misc = default;        // 1个仓代表剩余的所有值
+                                    // 没有分号
+    }
+endgroup // CoverKind
+```
+
+条件覆盖率
+
+使用关键字iff给覆盖点添加条件
+条件覆盖:复位期间禁止
+
+```SystemVerilog
+covergroup CoverPort;
+// 当reset == 1 时不收集覆盖率数据
+    coverpoint port iff(!bus_if.reset);
+endgroup
+```
+
+使用start和stop函数
+
+```SystemVerilog
+initial begin
+    CovPort ck = new(); //实例化覆盖组
+    // 复位期间停止收集覆盖率数据
+    # 1ns ck.stop();
+    bus_if.reset = 1;
+    # 100ns bus_if.reset = 0; //复位结束
+    ck.start();
+    ....
+end
+```
+
+翻转覆盖率
+
+查询port有没有从0变成1，2或3
+```SystemVerilog
+covergroup CoverPort;
+    coverpoint port{
+        bins t1 = (0 => 1, 0 => 2, 0 => 3);
+    }
+endgroup
+```
+
+用在覆盖点仓中的通配符
+
+```SystemVerilog
+bit [2:0] port;
+covergroup CoverPort;
+    coverpoint port{
+        wildcard bins even = {3'b?? 0}//??代表通配前两位置
+        wildcard bins odd = {3'b?? 1}
+    }
+endgroup
+```
+
+忽略数值
+
+使用ignore_bins覆盖点
+
+```SystemVerilog
+bit[2:0] low_ports_0_5; //只使用数值0-5
+covergroup CoverPort;
+    coverpoint low_ports_0_5{
+        ignore_bins hi={[6:7]}; //忽略最后两个仓
+    }
+endgroup
+
+bit[2:0] low_ports_0_5; //只使用数值0-5
+covergroup CoverPort;
+    coverpoint low_ports_0_5{
+        options.auto_bin_max = 4; //分成2个仓 0:1.，2:3, 4:5,6:7
+        ignore_bins hi={[6:7]}; //忽略最后两个仓
+    }
+endgroup
+```
+
+最后一个仓被忽略所以只有前三个仓
+
+
+不合法的仓
+```SystemVerilog
+bit [2:0] low_ports_0_5; //只使用数值0-5 //只使用数值0-5
+covergroup CoverPort;
+    coverpoint low_ports_0_5{
+        illegal_bins hi={[6:7]}; //如果出现就报错
+    }
+endgroup
+```
+
+### 交叉覆盖率
+
+```SystemVerilog
+class Transaction;
+    rand bit[3:0] kind;
+    rand bit[2:0] port;
+endclass
+
+Transaction tr;
+
+covergroup CovPort;
+    kind:coverpoint tr.kind; //创建覆盖点kind
+    port:coverpoint tr.port; //创建覆盖点port
+    cross kind,port; //把kind和port交叉
+endgroup
+```
+
+记录一个组里两个或两个以上覆盖点的组合值
+
+对交叉覆盖仓进行标号
+
+```SystemVerilog
+covergroup CovPortKind;
+    port:coverpoint tr.port
+    {
+        bins port[] = {[0:$]};
+    }
+    kind:coverpoint tr.kind
+    {
+        bins zero = {0};
+        bins lo = {[1:3], 5};
+        bins hi[] = {[8:$]};
+        bins misc = default;
+    }
+    cross kind,port
+endgroup
+```
+
+排除掉部分交叉覆盖仓
+
+```SystemVerilog
+covergroup Covport;
+    port:coverpoint tr.port
+    {
+        bins port[] = {[0:$]};
+    }
+    kind:coverpoint tr.kind
+    {
+        bins zero = {0};
+        bins lo = {[1:3], 5};
+        bins hi[] = {[8:$]};
+        bins misc = default;
+    }
+    cross kind,port
+    {
+        ignore_bins hi=binsof(port) intersect{7};
+        ignore_bins md = binsof(port) intersect{0} &&
+                         binsof(kind) intersect{[9:11]};
+        ignore_bins lo = binsof(kind.lo);
+    }
+endgroup
+```
+上面代码忽略port为7,和任意kind值组合的仓
+因为kind是一个4比特数值,这个语句排除掉了16个仓
+第二个ignore_bins语句排除了port为0,kind值为9-11的仓
+
+一个组的覆盖率是基于所有简单覆盖点和交叉覆盖率的,如果你只希望对一个coverpoint上的变量或表达式进行采样,而这个coverpoint将会被用到cross语句中,那么你应该把它的权重设置为0,这样就不会对
+
+指定交叉覆盖率的权重
+
+这段代码展示了 SystemVerilog 功能覆盖率（Functional Coverage）中一个非常关键的技巧：**通过调整权重（Weight）来定制覆盖率的计算逻辑**。
+
+它的核心目的是：**让某些特定的组合（Cross）成为考核重点，而将单独的信号采样仅作为辅助数据，不计入总分的“分母”中。**
+
+以下是详细解析：
+
+```systemverilog
+covergroup CovPort;
+    // 覆盖点 1: tr.kind
+    kind: coverpoint tr.kind {
+        bins zero = {0};
+        bins lo   = {[1:3]};
+        bins hi[] = {[8:$]};
+        bins misc = default;
+        option.weight = 5;  // 关键点 A
+    }
+
+    // 覆盖点 2: tr.port
+    port: coverpoint tr.port {
+        bins port[] = {[0:$]};
+        option.weight = 0;  // 关键点 B
+    }
+
+    // 交叉覆盖: kind 和 port 的组合
+    cross kind, port {
+        option.weight = 10; // 关键点 C
+    }
+endgroup
+```
+
+在 SystemVerilog 中，一个 Covergroup 的总覆盖率计算公式大致如下：
+$$ \text{Total Coverage} = \frac{\sum (\text{每个点的命中仓数})}{\sum (\text{每个点的总仓数} \times \text{该点的权重})} $$
+
+简单来说，**权重（Weight）决定了这个覆盖点在总分里占多大的比重**。
+
+
+- **代码含义**：定义了 `tr.kind` 的几个区间（zero, lo, hi, misc）。
+- **权重设置**：`option.weight = 5;`
+- **理解**：这意味着 `kind` 这个信号本身的采样情况是有价值的，但它不是最重要的。它在计算总分时，其贡献度是基准值的 5 倍（或者相对于 weight=1 的点来说更重要）。
+
+
+- **代码含义**：定义了 `tr.port` 的所有可能值（`[0:$]` 表示全范围）。
+- **权重设置**：`option.weight = 0;`
+- **为什么要设为 0？**
+    - 如果 `port` 是一个 32 位的地址或数据总线，它的可能取值有 $2^{32}$ 个（40多亿个）。
+    - 如果你把它的权重设为默认值（1），那么分母会变得巨大无比。哪怕你测了很久，只要没跑遍所有地址，覆盖率都会显示为 **0.00%**，这会掩盖其他重要信号的测试进度。
+    - **设为 0 的效果**：告诉仿真器，“我不关心 `port` 单独出现了多少次，也不要把它算进总分里”。它在这里存在的唯一目的，是为了配合下面的 `cross` 语句使用。
+
+- **代码含义**：检查 `kind` 和 `port` 是否同时出现过各种组合（例如：当 `kind` 为 `zero` 时，`port` 是否为 `5`？）。
+- **权重设置**：`option.weight = 10;`
+- **理解**：这是验证人员最关心的场景——**“某种类型的操作（kind）是否在各种端口（port）上都发生过？”**
+- 因为这是验证的重点，所以给了最高的权重（10），比单独的 `kind`（权重5）还要高。
+
+
+这段代码构建了一个**“重组合，轻单点”**的考核体系：
+
+1.  **忽略单点干扰**：通过 `port` 的 `weight=0`，排除了大位宽信号对整体覆盖率数据的“稀释”作用。
+2.  **聚焦业务逻辑**：通过 `cross` 的高权重，强迫验证团队关注信号之间的**关联性**（即：不仅要看有没有发数据，还要看是不是在正确的模式下发了数据）。
+3.  **保留基础监控**：`kind` 保留了非零权重，确保基本的模式切换也被记录在案。
+
+
+
+从多个值域中合并数据
+
+使用仓名来收集交叉覆盖率数据
+
+```SystemVerilog
+class Transaction;
+  rand bit a,b;
+endclass
+
+covergroup CrossBinNames;
+    a: coverpoint a;
+    {
+        bins a0 = {0};
+        bins a1 = {1};
+        option.weight = 0;
+    }//不计算此点的覆盖率
+
+    b: coverpoint b;
+    {
+        bins b0 = {0};
+        bins b1 = {1};
+        option.weight = 0;
+    } //不计算此点的覆盖率
+
+    ab:cross a,b
+    {
+        bins a0b0 = binsof{a.a0} && binsof{b.b0};
+        bins a1b0 = binsof{a.a1} && binsof{b.b0};
+        bins b1 = binsof(b.b1);
+    }
+endgroup
+```
+
+```SystemVerilog
+// 例 9.36 使用 binsof 的交叉覆盖率
+class Transaction;
+    rand bit a, b;
+endclass
+
+covergroup CrossBinsofIntersect;
+    // 覆盖点 a：权重设为0，表示不单独计算该点的覆盖率，仅作为交叉覆盖的源
+    a: coverpoint tr.a {
+        option.weight = 0;
+    }
+
+    // 覆盖点 b：权重设为0，同上
+    b: coverpoint tr.b {
+        option.weight = 0;
+    }
+
+    // 交叉覆盖 ab：自定义具体的组合仓
+    ab: cross a, b {
+        // 定义仓 a0b0：要求 a 为 0 且 b 为 0
+        bins a0b0 = binsof(a) intersect {0} &&
+                    binsof(b) intersect {0};
+
+        // 定义仓 a1b0：要求 a 为 1 且 b 为 0
+        bins a1b0 = binsof(a) intersect {1} &&
+                    binsof(b) intersect {0};
+
+        // 定义仓 b1：只要 b 为 1 (无论 a 是什么)
+        bins b1   = binsof(b) intersect {1};
+    }
+endgroup
+```
+
+使用串联值替代交叉覆盖
+
+```SystemVerilog
+covergroup CrossManual；
+    ab:coverpoint{tr.a,tr.b}
+    {bins a0b0 = {0,0};
+    bins a1b0 = {1,0};}
+  wildcard bins b1 = {2'b ? 1};
+endgroup
+```
+
+使用串联值来替代交叉覆盖
+
+```SystemVerilog
+covergroup CrossManual;
+    ab:coverpoint{tr.a,tr.b}
+    {bins a0b0 = {2'b 00};
+     bins a1b0 = {2'b 10};
+     wildcard bins b1 = {2'b 1?};
+     }
+endgroup
+```
+
+### 通用的覆盖组
+
+通过数值传递覆盖组参数
+
+```SystemVerilog
+bit [2:0] port；
+covergroup CoverPort(int mid);
+    coverpoint port
+    {
+        bins lo = {[0:mid-1]};
+        bins hi = {[mid:$]};
+    }
+endgroup
+
+CoverPort cp;
+initial 
+    cp = new(5);  //lo = 0:4，hi = 5:7
+```
+
+通过引用传递覆盖参数
+
+```SystemVerilog
+// 例 9.39 通过引用传递
+bit [2:0] port_a, port_b;
+
+// 定义带参数的 covergroup
+// ref bit[2:0] port : 引用传递信号，用于监控
+// input int mid     : 值传递整数，用于定义分界点
+covergroup CoverPort (ref bit [2:0] port, input int mid);
+    coverpoint port {
+        bins lo = {[0:mid-1]};   // 低位范围：0 到 mid-1
+        bins hi = {[mid:$]};     // 高位范围：mid 到最大值($)
+    }
+endgroup
+
+CoverPort cpa, cpb; // 声明两个 covergroup 实例
+
+initial begin
+    // 实例化 cpa：监控 port_a，分界点为 4
+    cpa = new(port_a, 4);       // lo=0:3, hi=4:7
+
+    // 实例化 cpb：监控 port_b，分界点为 2
+    cpb = new(port_b, 2);       // lo=0:1, hi=2:7
+end
+..
+```
+
+### 覆盖选项
+
+单个实例的覆盖率
+
+指定单个实例的覆盖率
+
+```SystemVerilog
+covergroup CoverLength;
+    coverpoint tr.length;
+    option.per_instance = 1;
+    //在注释中使用层次化路径
+    option.comment = $psprintf("%m");
+endgroup
+```
 
 
 
