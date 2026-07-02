@@ -7605,3 +7605,211 @@ endfunction : wrap_up
 
 ```
 
+这段代码展示了 SystemVerilog 验证环境中 `Environment` 类的核心运行逻辑（`run`）和收尾工作（`wrap_up`）。它通过并发控制、超时机制和计数器来管理整个仿真流程，确保测试有序进行并在异常时能够自动终止。
+
+
+```systemverilog
+// --------------------------------------------------
+// 启动事务:发生器、驱动器、监视器
+// 不会启动没有使用的通道
+task Environment::run();
+    int num_gen_running;
+
+    // CPU接口必须最先初始化
+    cpu.run();
+
+    num_gen_running = numRx;
+
+    // 为每个 Rx 接收通道启动发生器和驱动器
+    foreach (gen[i]) begin
+        int j = i; // 在交换出的线程里,自动变量保持了索引值
+        fork
+            begin
+                if (cfg.in_use_Rx[j])
+                    gen[j].run();   // 等待发生器结束
+                    num_gen_running--; // 减少驱动器的个数
+                end
+                if (cfg.in_use_Rx[j]) drv[j].run();
+            join_none
+    end
+
+    // 为每个 Tx 输出通道启动监视器
+    foreach (mon[i]) begin
+        int j=i; // 在交换出的线程里,自动变量保持了索引值
+        fork
+            mon[j].run();
+        join_none
+    end
+
+    // 等待所有的发生器结束或超时
+    fork : timeout_block
+        wait (num_gen_running == 0);
+        begin
+            repeat (1_000_000) @(Rx[0].cbr);
+            $display("%@%0t: %m ERROR: Generator timeout ", $time);
+            cfg.nErrors++;
+        end
+    join_any
+    disable timeout_block;
+
+    // 等待数据送到监视器和记分板
+    repeat (1_000) @(Rx[0].cbr);
+endtask : run
+
+// --------------------------------------------------
+// 运行结束后的清除/报告工作
+function void Environment::wrap_up();
+    $display( "%@%0t: End of sim, %0d errors, %0d warnings",
+              $time, cfg.nErrors, cfg.nWarnings);
+
+    scb.wrap_up;
+endfunction : wrap_up
+```
+
+---
+
+ 代码详细解析
+任务 `run()` —— 仿真主控流程
+这个任务是验证环境的“引擎”，负责按顺序启动各个组件并管理并发执行。
+
+- **CPU 初始化**：首先调用 `cpu.run()`，通常用于配置 DUT 的寄存器或设置初始状态，这是后续数据传输的前提。
+- **动态数组与 `fork...join_none`**：
+    - 使用 `foreach` 遍历所有通道。
+    - **关键技巧 `int j = i;`**：在 `fork` 块内部，循环变量 `i` 是共享的。为了防止并发线程在执行时 `i` 的值已经改变（导致所有线程操作同一个错误的索引），代码定义了一个局部变量 `j` 来捕获当前的 `i` 值。这是 SystemVerilog 并发编程的标准做法。
+    - **`join_none`**：表示父进程不需要等待子进程（Generator 或 Monitor）结束即可继续执行。这使得所有的 Generator 和 Monitor 能够同时并行运行。
+- **条件启动**：通过 `if (cfg.in_use_Rx[j])` 检查配置，只启动被启用的通道，避免资源浪费。
+- **超时保护机制 (`timeout_block`)**：
+    - 这是一个非常健壮的设计。它创建了一个名为 `timeout_block` 的命名块。
+    - 使用 `fork...join_any`：只要以下两个条件中**任意一个**满足，仿真就会继续往下走：
+        1.  `wait (num_gen_running == 0)`：所有的 Generator 都正常跑完了（计数器归零）。
+        2.  `repeat (1_000_000) ...`：如果 Generator 卡死或陷入死循环，经过 100 万个时钟周期后，强制触发超时错误。
+    - **`disable timeout_block;`**：一旦 `join_any` 触发（无论是正常结束还是超时），立即禁用该块，防止超时的分支在后台继续运行报错。
+- **收尾延迟**：最后的 `repeat (1_000)` 是为了给 Monitor 和 Scoreboard 留出时间处理最后的一批数据，防止仿真结束时数据还没比对完。
+函数 `wrap_up()` —— 报告与清理
+- **打印摘要**：在仿真结束时，打印总耗时、错误数和警告数，让工程师一眼看出测试结果。
+- **Scoreboard 检查**：调用 `scb.wrap_up`，通常用于检查 Scoreboard 内部是否还有未匹配的数据（即“漏网之鱼”），确保数据完整性。
+
+
+回调类连接了驱动器和计分板
+
+```SystemVerilog
+class Scb_Driver_cbs extends Driver_cbs;
+    Scoreboard scb;
+
+    function new(input Scoreboard scb);
+        this.scb = scb;
+    endfunction : new
+
+    //把收集到的信元发送到计分板
+    virtual task post_tx(input Driver drv,
+    input UNI_cell cell);
+        scb.save_expected(cell);
+    endtask : post_tx
+endclass : Scb_Driver_cbs
+
+```
+
+回调类连接了监视器和计分板
+
+```SystemVerilog
+class Scb_Monitor_cbs extends Monitor_cbs;
+
+    Scoreboard scb;
+    function new(input Scoreboard scb);
+        this.scb = scb;
+    endfunction : new
+
+    //把收到的信元发送到计分板
+    virtual task post_rx(input Monitor mon,input NNI_cell cell);
+         scb.check_actual(cell,mon,PortID);
+        endtask : post_rx
+    endclass : Scb_Monitor_cbs
+```
+    environment通过Cov_Monitor_cbs回调类连接了监视器和覆盖率类
+
+```SystemVerilog
+class Cov_Monitor_cbs extends Monitor_cbs;
+    Coverage cov;
+
+    function new(input Coverage cov);
+        this.cov = cov;
+    endfunction : new
+
+    // 把收到的信元发送到覆盖率类
+    virtual task post_rx( input Monitor mon,
+                          input NNI_cell cell);
+
+        CellCfgType CellCfg = top.squat.lut.read(cell.VPI);
+        cov.sample(mon.PortID, CellCfg.FWD);
+    endtask : post_rx
+
+endclass : Cov_Monitor_cbs
+```
+
+```SystemVerilog
+class Config;
+    // 错误和警告的个数
+    int nErrors, nWarnings;
+    // 把参数复制一份
+    bit [31:0] numRx, numTx;
+
+    // 信元的总数 (随机变量)
+    rand bit [31:0] nCells;
+
+    // 约束：信元数必须大于0
+    constraint c_nCells_valid {
+        nCells > 0;
+    }
+
+    // 约束：限制参与测试的信元个数小于 1000 个
+    constraint c_nCells_reasonable {
+        nCells < 1000;
+    }
+
+    // 允许使用的输入/输出通道 (随机动态数组)
+    rand bit in_use_Rx[];
+
+    // 约束：至少需要一个 RX 通道被使用
+    constraint c_in_use_valid {
+        in_use_Rx.sum() > 0;
+    }
+
+    // 每个通道的信元数 (随机动态数组)
+    rand bit [31:0] cells_per_chan[];
+
+    // 约束：把信元分配到各个通道 (各通道信元总数等于 nCells)
+    constraint c_sum_ncells_sum {
+        cells_per_chan.sum() == nCells;
+    }
+
+    // 约束：把未使用的通道的信元个数设为 0
+    constraint zero_unused_channels {
+        foreach (cells_per_chan[i]) {
+            // 在均匀分布时，先求解 in_use_Rx[]
+            solve in_use_Rx[i] before cells_per_chan[i];
+
+            if (in_use_Rx[i])
+                cells_per_chan[i] inside {[1:nCells]};
+            else
+                cells_per_chan[i] == 0;
+        }
+    }
+
+    extern function new(input bit [31:0] numRx, numTx);
+    extern virtual function void display(input string prefix="");
+endclass : Config
+```
+
+总量控制 (nCells)
+首先确定这次仿真总共要发送多少个信元（ATM Cell）。
+约束 c_nCells_valid 和 c_nCells_reasonable 保证数量在 1 到 999 之间，避免仿真时间过长或过短。
+通道激活 (in_use_Rx)
+这是一个位宽为 1 的动态数组。如果 in_use_Rx[0] 为 1，表示第 0 号端口被激活；为 0 则表示关闭。
+约束 c_in_use_valid 确保不会发生所有端口都关闭的情况（即总和必须大于 0）。
+流量分配 (cells_per_chan)
+这是最复杂的部分。它定义了一个数组，存储每个端口具体要发多少数据。
+全局守恒：cells_per_chan.sum() == nCells 保证了所有端口发出的数据加起来正好等于总任务量。
+局部逻辑：zero_unused_channels 约束配合 solve...before 语句起到了关键作用：
+它告诉求解器：先决定哪些端口是开着的 (in_use_Rx)，再决定每个端口发多少数据 (cells_per_chan)。
+如果端口没开 (in_use_Rx[i] == 0)，则该端口的信元数强制为 0。
+如果端口开了，则信元数在 1 到总数之间随机
