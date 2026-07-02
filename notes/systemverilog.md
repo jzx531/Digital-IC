@@ -6957,3 +6957,651 @@ endprogram
 
 ### 连接到多个不同的设计配置
 
+8位计数器的接口
+
+```SystemVerilog
+interface X_if(input logic clk);
+    logic[7:0] din,dout;
+    logic reset_l,load;
+
+    clocking cb @(posedge clk);
+        output din,load;
+        input dout;
+    endclocking
+
+    always @ cb
+    $strobe("@%0t %0d", $time, din);
+
+    modport DUT(input clk,din,reset_l,load,output dout);
+endinterface
+```
+
+使用X_if接口的计数器模型
+
+```SystemVerilog
+module dut(X_if.DUT xi);
+    logic[7:0] count;
+    assign xi.dout = count;
+
+    always @(posedge xi.clk or negedge xi.reset_l)
+     begin
+        if (xi.reset_l)
+            count <= 0;
+        else if (xi.load)
+            count <= xi.din;
+        else
+            count <= count + 1;
+    end
+endmodule
+```
+
+使用虚拟接口数组的测试平台
+
+```parameter NUM_XI = 2; // 设计实例的个数
+parameter NUM_XI = 2;
+
+module top;
+    //时钟发生器
+    bit clk;
+
+    initial begin
+        clk <= '0;
+        forever #20 clk <= ~clk;
+    end
+
+    //例化N个接口
+    X_if xi[NUM_XI] (clk);
+
+    //例化测试平台
+    test tb();
+
+    //产生N个DUT实例
+    generate
+    for(genvar i=0; i < NUM_XI; i++)
+        begin:dut_blk
+            dut dut_i(xi[i]);
+        end
+    endgenerate
+endmodule
+```
+
+使用虚拟接口的计数器测试平台
+
+```SystemVerilog
+// 例 10.19 使用虚接口的计数器测试平台
+program automatic test;
+
+    // 1. 声明虚接口数组和 Driver 动态数组
+    virtual X_if.TB vxi[NUM_XI]; // 虚接口数组
+    Driver driver[];
+
+    initial begin
+        // 2. 将顶层物理接口连接到局部虚接口
+        vxi = top.xi;
+
+        // 3. 创建 N 个驱动器对象 (Driver)
+        driver = new[NUM_XI];
+        foreach(driver[i])
+            driver[i] = new(vxi[i], i);
+
+        // 4. 并发执行所有驱动器的任务
+        foreach(driver[i]) begin
+            int j = i; // 关键步骤：复制循环变量
+            fork
+                begin
+                    driver[j].reset();
+                    driver[j].load_op();
+                end
+            join_none
+        end
+
+        // 5. 等待一段时间让任务运行
+        repeat(10) @(vxi[0].cb);
+    end
+
+endprogram
+```
+
+使用虚接口的Driver类
+
+```SystemVerilog
+// 例 10.20 使用虚接口的 Driver 类
+class Driver;
+    virtual X_if xi; // 声明虚接口句柄
+    int id;          // 驱动器 ID，用于区分不同实例
+
+    // 构造函数：接收虚接口和 ID
+    function new(input virtual X_if.TB xi, input int id);
+        this.xi = xi;
+        this.id = id;
+    endfunction
+
+    // 复位任务
+    task reset();
+        $display("@%0t:%m:Start reset[%0d]", $time, id);
+
+        // 设备复位逻辑
+        xi.reset_l <= 1;      // 拉高复位信号（假设低电平有效，此处可能是释放复位或特定协议）
+        xi.cb.load <= 0;      // 拉低 load 信号
+        xi.cb.din <= 0;       // 数据输入置 0
+        @(xi.cb) xi.reset_l <= 0; // 等待时钟沿，拉低复位信号
+        @(xi.cb) xi.reset_l <= 1; // 再等一个时钟沿，拉高复位信号（完成复位脉冲）
+
+        $display("@%0t:%m:End reset[%0d]", $time, id);
+    endtask : reset
+
+    // 加载操作任务
+    task load_op();
+        $display("@%0t:%m:Start load[%0d]", $time, id);
+
+        #1 xi.cb.load <= 1;   // 延时 1 个时间单位后，拉高 load 信号
+        xi.cb.din <= id + 10; // 设置数据输入为 id + 10
+
+        #1 xi.cb.load <= 0;   // 延时 1 个时间单位后，拉低 load 信号
+        repeat(5) @(xi.cb);   // 等待 5 个时钟周期
+
+        $display("@%0t:%m:End load[%0d]", $time, id);
+    endtask : load_op
+
+endclass : Driver
+```
+
+对虚接口使用typedef
+
+```SystemVerilog
+typedef virtual x_if.TB vx_if;
+
+program automatic test；
+    vx_if vxi[NUM_XI]; //虚接口数组
+    Driver driver[];
+
+    ...
+endprogram
+```
+
+使用端口传递虚接口的测试平台
+
+```SystemVerilog
+parameter NUM_XI = 2; //实例个数
+
+module top;
+    //例化N个接口
+    X_if xi[NUM_XI] (clk);
+
+
+    //例化测试平台
+    test tb(xi);
+endmodule
+```
+
+使用端口传递虚接口测试平台
+
+```SystemVerilog
+// 例 10.21 使用端口传递虚接口的测试平台
+Driver driver[];              // 声明 Driver 动态数组
+virtual X_if vxi[NUM_XI];     // 声明虚接口数组
+
+initial begin
+    // 将局部虚接口连到顶层
+    if (NUM_XI <= 0) $finish; // 安全检查：如果通道数为0则结束仿真
+
+    driver = new[NUM_XI];     // 为 Driver 数组分配内存空间
+    vxi = xi;                 // 把顶层物理接口数组赋值给本地虚接口数组
+
+    for (int i=0; i < NUM_XI; i++) begin
+        driver[i] = new(vxi[i], i); // 实例化第 i 个 Driver，传入对应的虚接口和 ID
+        driver[i].reset();          // 调用该 Driver 的复位任务
+    end
+    ...
+end
+endprogram
+```
+
+### 接口中的过程代码
+
+并行协议接口
+
+```SystemVerilog
+interface simple_if(input logic clk);
+    // 1. 信号定义
+    logic [7:0] addr;
+    logic [7:0] data;
+    bus_cmd_e cmd;
+
+    // 2. 目标端口 (Target) - 面向从机或接收端
+    modport TARGET (
+        input addr, cmd, data,
+        import task targetRcv(output bus_cmd_e c, logic[7:0] a, d)
+    );
+
+    // 3. 发起者端口 (Initiator) - 面向主机或发送端
+    modport INITIATOR (
+        output addr, cmd, data,
+        import task initiatorSend(input bus_cmd_e c, logic[7:0] a, d)
+    );
+
+    // 4. 并行发送任务 (由 Initiator 使用)
+    task initiatorSend(input bus_cmd_e c, logic[7:0] a, d);
+        @(posedge clk);     // 等待时钟上升沿
+        cmd <= c;           // 非阻塞赋值驱动命令
+        addr <= a;          // 非阻塞赋值驱动地址
+        data <= d;          // 非阻塞赋值驱动数据
+    endtask
+
+    // 5. 并行接收任务 (由 Target 使用)
+    task targetRcv(output bus_cmd_e c, logic[7:0] a, d);
+        @(posedge clk);     // 等待时钟上升沿采样
+        a = addr;           // 阻塞赋值采样地址
+        d = data;           // 阻塞赋值采样数据
+        c = cmd;            // 阻塞赋值采样命令
+    endtask
+
+endinterface : simple_if
+```
+
+串行接口代码
+
+```SystemVerilog
+// 例 10.26 含有使用串行协议任务的接口
+interface simple_if(input logic clk);
+    logic addr;
+    logic data;
+    logic start = 0;
+    bus_cmd_e cmd;
+
+    // 定义 Target（从机/接收端）端口视图
+    modport TARGET (
+        input addr, cmd, data,
+        import task targetRcv(output bus_cmd_e c, logic [7:0] a, d)
+    );
+
+    // 定义 Initiator（主机/发送端）端口视图
+    modport INITIATOR (
+        output addr, cmd, data,
+        import task initiatorSend(input bus_cmd_e c, logic [7:0] a, d)
+    );
+
+    // --- 串行发送任务 ---
+    task initiatorSend(input bus_cmd_e c, logic [7:0] a, d);
+        @(posedge clk);       // 等待时钟上升沿
+        start <= 1;           // 拉高 Start 信号，开始传输
+        cmd <= c;             // 发送命令
+        
+        // 循环遍历数组进行串行发送
+        foreach(a[i]) begin
+            addr <= a[i];     // 发送地址位
+            data <= d[i];     // 发送数据位
+            @(posedge clk);   // 等待下一个时钟沿（串行传输的核心）
+        end
+        
+        start <= 0;           // 拉低 Start 信号，结束传输
+        cmd <= IDLE;          // 命令恢复空闲状态
+    endtask
+
+    // --- 串行接收任务 ---
+    task targetRcv(output bus_cmd_e c, logic [7:0] a, d);
+        @(posedge start);     // 等待 Start 信号变高（检测传输开始）
+        c = cmd;              // 采样命令
+        
+        // 循环遍历数组进行串行接收
+        foreach(a[i]) begin
+            @(posedge clk);   // 等待时钟沿以同步采样
+            a[i] = addr;      // 采样地址位
+            d[i] = data;      // 采样数据位
+        end
+    endtask
+
+endinterface : simple_if
+```
+
+发送端 (initiatorSend)：
+使用了 foreach(a[i]) 循环。这表明传入的参数 a 和 d 是数组。
+在循环内部有一个 @(posedge clk)。这是串行化的关键：每过一个时钟周期，才发送下一位数据。
+整个过程被包裹在 start 信号的高电平期间。
+接收端 (targetRcv)：
+首先阻塞在 @(posedge start)，这是一种典型的握手等待机制。只有当发送方发起传输时，接收方才被唤醒。
+随后进入与发送方完全同步的 foreach 循环，利用 @(posedge clk) 确保在正确的时间点采样数据。
+在 Task 内部：
+发送端使用非阻塞赋值（<=）来驱动信号，符合硬件仿真规范，避免竞争冒险。
+接收端使用阻塞赋值（=）来将接口信号的值赋给局部变量（参数），这是为了立即获取当前时刻的信号值用于后续处理。
+
+
+### 完整的SystemVerilog测试平台
+
+这段代码展示了 SystemVerilog 验证环境中的**顶层模块（Top Module）**设计。它定义了一个名为 `squat` 的 DUT（被测设计），并为其配置了时钟、复位以及多个 Utopia 接口实例，最后将 DUT 和测试平台（Testbench）连接在一起。
+
+
+
+```systemverilog
+// 例 11.1 顶层模块
+`timescale 1ns/1ns
+`define TxPorts 4 // 发送端口的个数
+`define RxPorts 4 // 接收端口的个数
+
+module top;
+    parameter int NumRx = `RxPorts;
+    parameter int NumTx = `TxPorts;
+
+    logic rst, clk;
+
+    // 系统时钟和复位
+    initial begin
+        rst = 0; clk = 0;
+        # 5ns rst = 1;
+        # 5ns clk = 1;
+        # 5ns rst = 0; clk = 0;
+        forever
+            # 5ns clk = ~clk;
+    end
+
+    // 接口实例化
+    Utopia Rx[0:NumRx-1] ();      // NumRx 个 Level 1 Utopia Rx 接口
+    Utopia Tx[0:NumTx-1] ();      // NumTx 个 Level 1 Utopia Tx 接口
+    cpu_ifc mif();                // Utopia management interface
+
+    // DUT 实例化
+    squat #(NumRx, NumTx) squat(Rx, Tx, mif, rst, clk);
+
+    // Testbench 实例化
+    test #(NumRx, NumTx) t1(Rx, Tx, mif, rst, clk);
+
+endmodule : top
+```
+
+测试平台程序
+
+```systemverilog
+// 例 11.2 测试平台的程序
+program automatic test
+    #(parameter int NumRx = 4, parameter int NumTx = 4)
+    (Utopia.TB_Rx Rx[0:NumRx-1],
+     Utopia.TB_Tx Tx[0:NumTx-1],
+     cpu_ifc.Test mif,
+     input logic rst, clk);
+
+    `include "environment.sv"
+    Environment env;
+
+    initial begin
+        // 1. 创建环境对象
+        env = new(Rx, Tx, NumRx, NumTx, mif);
+
+        // 2. 标准验证流程
+        env.gen_cfg();      // 生成配置
+        env.build();        // 构建组件（如 Driver, Monitor 等）
+        env.run();          // 运行仿真
+        env.wrap_up();      // 结束处理与报告
+
+    end
+endprogram // test
+```
+测试平台通过管理接口来装载控制信息
+
+
+CPU管理接口
+
+```SystemVerilog
+
+interface cpu_ifc;
+
+    logic BusMode,Rd_Ds,Wr_Rw,Rdy_Dtack;
+    logic [11:0] Addr;
+    CellCfgType DataIn,DataOut; 
+
+    modport Peripheral(input BusMode,Addr,Sel,DataIn,Rd_DS,Wr_RW,output DataOut,Rdy_Dtack);
+
+    modport Test(output BusMode,Addr,Sel,DataIn,Bd_Ds,Wr_RW,input DataOut,Rdy_Dtack);
+
+    endinterface : cpu_ifc
+    typedef virtual cpu_ifc.Test vCPU_T;
+```
+
+Utopia接口与待测设计squat进行通信，发送和接收ATM信元
+
+```SystemVerilog
+interface Utopia;
+    parameter int IfWidth = 8;
+
+    logic [IfWidth-1:0] data;
+    bit clk_in, clk_out;
+    bit soc, en, clav, valid, ready, reset, selected;
+
+    ATMCellType ATMCell; // ATM信元结构的联合
+
+    // 顶层接收端口视图
+    modport TopReceive (
+        input data, soc, clav,
+        output clk_in, reset, ready, clk_out, en, ATMCell, valid
+    );
+
+    // 顶层发送端口视图
+    modport TopTransmit (
+        input clav,
+        inout selected,
+        output clk_in, clk_out, ATMCell, data, soc, en, valid,
+               reset, ready
+    );
+
+    // 核心接收端口视图
+    modport CoreReceive (
+        input clk_in, data, soc, clav, ready, reset,
+        output clk_out, en, ATMCell, valid
+    );
+
+    // 核心发送端口视图
+    modport CoreTransmit (
+        input clk_in, clav, ATMCell, valid, reset,
+        output clk_out, data, soc, en, ready
+    );
+
+    // 接收端测试平台时钟块
+    clocking cbr @ (negedge clk_out);
+        input  clk_in, clk_out, ATMCell, valid, reset, en, ready;
+        output data, soc, clav;
+    endclocking : cbr
+    modport TB_Rx (clocking cbr);
+
+    // 发送端测试平台时钟块
+    clocking cbt @ (negedge clk_out);
+        input  clk_out, clk_in, ATMCell, soc, en, valid,
+               reset, data, ready;
+        output clav;
+    endclocking : cbt
+
+    modport TB_Tx (clocking cbt);
+
+endinterface
+
+// 虚拟接口类型定义
+typedef virtual Utopia vUtopia;
+typedef virtual Utopia.TB_Rx vUtopiaRx;
+typedef virtual Utopia.TB_Tx vUtopiaTx;
+```
+
+测试平台的模块environment
+```SystemVerilog
+// 例 11.5 Environment 类的首部
+class Environment;
+
+    // --- 组件声明 ---
+    UNI_generator gen[];      // 激励生成器数组
+    mailbox gen2drv[];        // 生成器到驱动器的信箱（用于传输事务）
+    event drv2gen[];          // 驱动器到生成器的事件（用于握手/同步）
+    Driver drv[];             // 驱动器数组
+    Monitor mon[];            // 监视器数组
+    Config cfg;               // 配置对象
+    Scoreboard scb;           // 记分板（用于数据比对）
+    Coverage cov;             // 覆盖率收集组件
+
+    // --- 虚拟接口声明 ---
+    virtual Utopia.TB_Rx Rx[];  // 接收端口的虚拟接口数组
+    virtual Utopia.TB_Tx Tx[];  // 发送端口的虚拟接口数组
+
+    // --- 内部变量 ---
+    int numRx, numTx;         // 记录端口数量
+    vCPU_T mif;               // CPU 管理接口的虚拟接口句柄
+    CPU_driver cpu;           // CPU 驱动器
+
+    // --- 方法声明 (extern 表示定义在类外部) ---
+
+    // 构造函数
+    extern function new(
+        input vUtopiaRx Rx[],
+        input vUtopiaTx Tx[],
+        input int numRx, numTx,
+        input vCPU_T mif
+    );
+
+    // 核心生命周期方法
+    extern virtual function void gen_cfg();   // 生成配置
+    extern virtual function void build();     // 构建环境（实例化组件）
+    extern virtual task run();                // 运行仿真（启动各组件）
+    extern virtual task wrap_up();            // 结束处理（检查结果、打印报告）
+
+endclass : Environment
+```
+
+Environment类的方法
+
+//构造Environment类的方法
+
+```SystemVerilog
+
+// --------------------------------------------------
+// 构造 environment 实例
+function Environment::new( input vUtopiaRx Rx[],
+                           input vUtopiaTx Tx[],
+                           input int numRx, numTx,
+                           input vCPU_T mif);
+
+    // 动态数组的内存分配与赋值
+    this.Rx = new[Rx.size()];
+    foreach (Rx[i]) this.Rx[i] = Rx[i];
+
+    this.Tx = new[Tx.size()];
+    foreach (Tx[i]) this.Tx[i] = Tx[i];
+
+    // 标量参数赋值
+    this.numRx = numRx;
+    this.numTx = numTx;
+    this.mif = mif;
+
+    // 创建配置对象
+    cfg = new(numRx, numTx);
+
+    // 处理随机种子 (Random Seed)
+    if ($test$plusargs("ntb_random_seed")) begin
+        int seed;
+        $value$plusargs("ntb_random_seed=%d", seed);
+        $display("Simulation run with random seed=%0d", seed);
+    end
+    else
+        $display("Simulation run with default random seed");
+
+endfunction : new
+
+// --------------------------------------------------
+// 随机化配置描述符
+function void Environment::gen_cfg();
+    assert(cfg.randomize());
+    cfg.display();
+endfunction : gen_cfg
+
+// 这样可以避免空句柄错误。
+function void Environment::build();
+    // 1. 实例化基础组件
+    cpu = new(mif, cfg);
+    gen = new[numRx];
+    drv = new[numRx];
+    gen2drv = new[numRx];
+    drv2gen = new[numRx];
+    scb = new(cfg);
+    cov = new();
+
+    // 建立发生器 (Generators)
+    foreach (gen[i]) begin
+        gen2drv[i] = new();
+        gen[i] = new(gen2drv[i], drv2gen[i],
+                     cfg.cells_per_chan[i], i);
+        drv[i] = new(gen2drv[i], drv2gen[i], Rx[i], i);
+    end
+
+    // 建立监视器 (Monitors)
+    mon = new[numTx];
+    foreach (mon[i])
+        mon[i] = new(Tx[i], i);
+
+    // 通过回调函数连接记分板到驱动器和监视器
+    begin
+        Scb_Driver_cbs sdc = new(scb);
+        Scb_Monitor_cbs smc = new(scb);
+        foreach (drv[i]) drv[i].cbsq.push_back(sdc);
+        foreach (mon[i]) mon[i].cbsq.push_back(smc);
+    end
+
+    // 通过回调函数连接覆盖率程序到监视器
+    begin
+        Cov_Monitor_cbs smc = new(cov);
+        foreach (mon[i])
+            mon[i].cbsq.push_back(smc);
+    end
+endfunction : build
+
+// --------------------------------------------------
+// 启动事务:发生器、驱动器、监视器
+// 不会启动没有使用的通道
+task Environment::run();
+    int num_gen_running;
+
+    // CPU接口必须最先初始化
+    cpu.run();
+
+    num_gen_running = numRx;
+
+    // 为每个 Rx 接收通道启动发生器和驱动器
+    foreach (gen[i]) begin
+        int j = i; // 在交换出的线程里,自动变量保持了索引值
+        fork
+            begin
+                if (cfg.in_use_Rx[j])
+                    gen[j].run();   // 等待发生器结束
+                    num_gen_running--; // 减少驱动器的个数
+                end
+                if (cfg.in_use_Rx[j]) drv[j].run();
+            join_none
+    end
+
+    // 为每个 Tx 输出通道启动监视器
+    foreach (mon[i]) begin
+        int j=i; // 在交换出的线程里,自动变量保持了索引值
+        fork
+            mon[j].run();
+        join_none
+    end
+
+    // 等待所有的发生器结束或超时
+    fork : timeout_block
+        wait (num_gen_running == 0);
+        begin
+            repeat (1_000_000) @(Rx[0].cbr);
+            $display("%@%0t: %m ERROR: Generator timeout ", $time);
+            cfg.nErrors++;
+        end
+    join_any
+    disable timeout_block;
+
+    // 等待数据送到监视器和记分板
+    repeat (1_000) @(Rx[0].cbr);
+endtask : run
+
+// --------------------------------------------------
+// 运行结束后的清除/报告工作
+function void Environment::wrap_up();
+    $display( "%@%0t: End of sim, %0d errors, %0d warnings",
+              $time, cfg.nErrors, cfg.nWarnings);
+
+    scb.wrap_up;
+endfunction : wrap_up
+
+```
+
