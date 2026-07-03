@@ -7813,3 +7813,64 @@ endclass : Config
 它告诉求解器：先决定哪些端口是开着的 (in_use_Rx)，再决定每个端口发多少数据 (cells_per_chan)。
 如果端口没开 (in_use_Rx[i] == 0)，则该端口的信元数强制为 0。
 如果端口开了，则信元数在 1 到总数之间随机
+
+信元配置类型
+
+```SystemVerilog
+typedef struct packed{
+    bit ['TxPorts-1:0] FWD;
+    bit [11:0] VPI;
+}CellCfgType;
+
+function Config::new(input bit [31:0] numRx, numTx);
+    this.numRx = numRx;
+    this.numTx = numTx;
+    int_use_Rx = new[numRx];
+    cells_per_chan = new[numRx];
+endfunction : new
+
+function void Config::display(input string prefix);
+    $write("%sConfig:numRx = %0d, numTx = %0d, nCells = %0d\n{",
+           prefix, numRx, numTx, nCells);
+
+    foreach(cells_per_chan[i])
+        $write("%0d",cells_per_chan[i]);
+    $write("),enabled Rx:",prefix);
+    foreach(in_use_Rx[i]) if(in_use_Rx[i]) $write("%0d",i);
+    $display;
+endfunction : display
+```
+
+ATM交换机接收UNI格式的信元,发送NNI格式的信元
+
+这些信元经过基于OOP的测试平台和结构化的设计,所以使用typedef定义
+
+UNI信元格式
+
+```SystemVerilog
+typedef struct packed{
+    bit    [3:0]   GFC;
+    bit    [7:0]   VPI;
+    bit    [15:0]  VCI;
+    bit            CLP;
+    bit    [2:0]   PT;
+    bit    [7:0]   HEC;
+    bit    [0:47] [7:0] payload;
+}uniType;
+
+```
+
+NNI信元格式
+
+```SystemVerilog
+
+typedef struct packed{
+    bit [11:0] VPI;
+    bit [15:0] VCI;
+    bit       CLP;
+    bit [2:0]   PT;
+    bit [7:0]   HEC;
+    bit [0:47] [7:0] payload;
+}nniType;
+```
+ATMxin 
