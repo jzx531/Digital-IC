@@ -1,4 +1,4 @@
-# SystemVerilog 验证平台
+﻿# SystemVerilog 验证平台
 
 [TOC]
 
@@ -28,7 +28,7 @@ SystemVerilog 硬件验证语言(Hard Verification Language，HVL)
 下面是一个不分层的测试平台的例子：
 
 一个用于驱动APB引脚的任务
-```verilog
+```systemverilog
 task write(reg[15:0] addr,reg[31:0] data);
     //驱动控制总线
     @(posedge clk)
@@ -100,7 +100,7 @@ endmodule
 驱动器可能会注入错误或者增加时延,然后再把命令分解为一些信号的变化,例如总线请求或握手
 事务处理器,核心部分是一个循环:有关事务处理器的师范代码如下:
 
-```verilog
+```systemverilog
 task run();
     done = 0;
     while(!done) begin
@@ -230,8 +230,6 @@ int ascend[4] = '{1,2,3,4};  //等价声明方式
 int descend[4];
 descend = '{4,3,2,1};
 
-<!-- 为前三个元素赋值 -->
-
 descend[0:2] = '{3,2,1};  //等价声明方式
 ascend ='{4{8}}; //四个值全部为0
 descend = '{9,8,default:1};
@@ -287,7 +285,7 @@ end
 initial begin
     bit [31:0] src[5] = '{1,2,3,4,5},
                dst[5] = '{5,4,3,2,1};
-    
+
     //两个数组的聚合比较
     if(src == dst)
         $display("src == dst");
@@ -385,7 +383,7 @@ foreach (q[i])
 q.delete();               // {}                 删除整个队列
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 2.20 队列操作
 int j = 1,
     q2[$] = {3, 4},       // 队列的常量不需要使用“ ' ”
@@ -431,7 +429,7 @@ initial begin
     //使用foreach遍历数组
     foreach(assoc[i])
         $display("assoc[%0d] = %0d", i, assoc[i]);
-    
+
     //使用函数遍历数组
     // 使用 foreach 遍历数组
     foreach (assoc[i])
@@ -483,7 +481,7 @@ foreach(switch[s])
 end
 
 ```
-            
+        
 ### 数组方法
 
 ```systemverilog
@@ -535,7 +533,7 @@ foreach(aa[i])
 ```
 
 
-####  数组定位方法
+#### 数组定位方法
 
 ```systemverilog
 int f[6] = '{1,6,2,6,8,6};
@@ -623,14 +621,14 @@ endfunction : check_addr
 ### 使用typedef 创建新的类型
 
 Verilog 中用户自定义的类型宏
-```verilog
+```systemverilog
 `define OPSIZE 8
 `define OPREG reg[`OPSIZE-1:0]
 
 `OPREG op_a,op_b;
 ```
 
-```SystemVerilog
+```systemverilog
 parameter OPSIZE = 8;
 typedef reg[OPSIZE-1:0] opreg_t;
 
@@ -638,7 +636,7 @@ opreg_t op_a,op_b;
 ```
 
 uint的定义
-```SystemVerilog
+```systemverilog
 typedef bit [31:0] uint;
 typedef int unsigned uint; //等效的定义
 ```
@@ -656,7 +654,7 @@ end
 ```
 
 使用struct 创建新类型
-```SystemVerilog
+```systemverilog
 struct {bit[7:0] r,g,b;} pixel;
 
 typedef struct {bit[7:0] r,g,b;} pixel_s;
@@ -683,7 +681,7 @@ initial begin
 ```
 
 创建可容纳不同类型的联合
-```SystemVerilog
+```systemverilog
 typedef union {int i ; real f;} num_u;
 num_u un;
 un.f = 0.0; //把数值设置为浮点形式
@@ -693,7 +691,7 @@ un.f = 0.0; //把数值设置为浮点形式
 合并结构
 
 pixel使用三个数值,所以它占用了三个长字的存储空间,即使它实际只需要三个字节
-```SystemVerilog
+```systemverilog
 typedef struct packed {
     bit[7:0] r;
     bit[7:0] g;
@@ -708,7 +706,7 @@ pixel_p_s p;
 静态转换
 
 在整型和实型之间进行静态转换
-```SystemVerilog
+```systemverilog
 int i;
 real r;
 
@@ -745,7 +743,7 @@ end
 
 数组元素会根据需要自动分配
 
-```SystemVerilog
+```systemverilog
 initial begin
     bit [15:0] wq[$] = '{16'h1234, 16'h5678, 16'h9abc,16'ddef0};
     bit [7:0] bq[$];
@@ -761,7 +759,7 @@ end
 
 流操作符也可用来将结构打包或者拆分到字节数组中
 
-```SystemVerilog
+```systemverilog
 initial begin
   typedef struct {
     int a;
@@ -788,7 +786,7 @@ end
 
 enum {RED,BLUE,GREEN} color;
 
-```SystemVerilog
+```systemverilog
 // 创建代表 0,1,2 的数据类型
 typedef enum {INIT, DECODE, IDLE} fsmstate_e;
 fsmstate_e pstate, nstate;       // 声明自定义类型变量
@@ -814,7 +812,7 @@ end
 
 ### 常量
 
-```SystemVerilog
+```systemverilog
 // 常量声明
 initial begin 
     const byte colon = ":";
@@ -823,7 +821,7 @@ end
 
 字符串方法
 
-```SystemVerilog
+```systemverilog
 string s ;
 initial begin
     s = "IEEE";
@@ -845,7 +843,7 @@ endtask
 
 ### 表达式的位宽
 
-```SystemVerilog
+```systemverilog
 bit [7:0] b8l;
 bit one = 1'b1;
 
@@ -865,7 +863,7 @@ $display(b8l);  // E: 2
 
 ### 过程语句
 
-```SystemVerilog
+```systemverilog
 initial 
     begin:example
      integer array[10],sum,j;
@@ -890,21 +888,21 @@ initial
 
 如果有一个不消耗时间的SystemVerilog任务,应该把它定义成void函数,这种函数没有返回值,便于被任何其他任务或函数所调用
 
-```SystemVerilog
+```systemverilog
 function void print_state(...);
     $display("@%0t:state = %s", $time, cur_state.name());
 endfunction
 ```
 
 忽略函数的返回值
-```SystemVerilog
+```systemverilog
 void' ($fscanf(file, "%d",i));
 ```
 
 ### 任务和函数概述
 
 不带begin...end的简单任务
-```SystemVerilog
+```systemverilog
 task multiple_lines;
     $display("Line 1");
     $display("Line 2");
@@ -915,7 +913,7 @@ endtask
 
 C语言风格的子程序参数
 
-```Verilog
+```systemverilog
 
 task mytask2;
     output [31:0] x; //方向声明
@@ -927,7 +925,7 @@ endtask
 
 而在SystemVerilog,可以采用简明C语言风格
 
-```SystemVerilog
+```systemverilog
 task mytask3(output logic [31:0] x,input logic y);
     ....
 endtask
@@ -939,7 +937,7 @@ Verilog对参数的处理方式很简单,在子程序开头把input和inout的�
 而SystemVerilog中，可以指定为引用而不是复制
 这种ref参数类型比input,output或inout更好用
 
-```SystemVerilog
+```systemverilog
 function void print_checksum(const ref bit [31:0] a[]);
     bit [31:0] checksum = 0;
     for(int i = 0 ;i < a.size(); i++)
@@ -950,7 +948,7 @@ endfunction
 
 ref还有好处: 在任务里可以修改变量而且修改结果对调用它的函数随时可见
 
-```SystemVerilog
+```systemverilog
 task bus_read(input logic [31:0] addr,
               ref logic [31:0] data);
 
@@ -982,7 +980,7 @@ initial
 
 在SystemVerilog中,可以为参数指定一个缺省值,如果在调用时不指明参数(和cpp一样)
 
-```SystemVerilog
+```systemverilog
 task sticky (ref int array[50],int a,b);
 ```
 
@@ -991,7 +989,7 @@ task sticky (ref int array[50],int a,b);
 
 ### 子程序的返回
 
-```SystemVerilog
+```systemverilog
 task load_array(int len, ref int array[]);
     if(len < 0) begin
         $display("Bad len");
@@ -1011,7 +1009,7 @@ endfunction
 
 从函数中返回一个数组
 
-```SystemVerilog
+```systemverilog
 typedef int fixed_array5[5];
 fixed_array5 f5;
 
@@ -1031,7 +1029,7 @@ end
 
 另一种方式时通过引用传递数组给函数
 
-```SystemVerilog
+```systemverilog
 function void init(ref int f[5],input int start);
     foreach(f[i])
         f[i] = start + i;
@@ -1043,7 +1041,7 @@ endfunction
 
 在SystemVerilog中,模块(module) 和 program块中的子程序缺省情况下仍然使用静态存储（局部变量和子程序参数被存放在共享的静态存储区,多线程之间会窜用局部变量）,如果使用自动存储,则必须在程序语句中加入automatic关键字
 
-```SystemVerilog
+```systemverilog
 program automatic test;
     task wait_for_mem(input [31:0] addr,expect_data,output success);
         while(bus.addr !== addr)
@@ -1058,14 +1056,14 @@ endprogram
 
 修复静态初始化漏洞
 
-```SystemVerilog
+```systemverilog
 program automatic initialization; //漏洞被修复
 ...
 endprogram
 ```
 
 修复静态初始化的漏洞,把声明和初始化拆开
-```SystemVerilog
+```systemverilog
 logic [7:0] local_addr;
 local_addr = addr << 2;
 ```
@@ -1080,7 +1078,7 @@ SystemVerilog允许使用数值和单位来明确指定一个时间值,
 你还可以通过使用经典的verilog时间函数$timeformat，$time和$realtime
 来使代码在时间标度上更清楚
 
-```SystemVerilog
+```systemverilog
 
 module timing;
     timeunit 1ns;
@@ -1099,7 +1097,7 @@ endmodule
 
 时间变量及舍入
 
-```SystemVerilog
+```systemverilog
 `timescale 1ps/1ps
 module ps;
     initial begin
@@ -1124,10 +1122,10 @@ endmodule
 
 使用端口的仲裁器模型
 
-```SystemVerilog
+```systemverilog
 module arb_port(output logic [1:0] grant,
                 input logic [1:0] request,
-                intput logic rst,
+                input logic rst,
                 input logic clk);
     always @(posedge clk or posedge rst) begin
     if(rst)
@@ -1140,7 +1138,7 @@ endmodule
 
 测试平台定义在另一个模块中,与设计所在的 模块相互独立
 
-```SystemVerilog
+```systemverilog
 module test (input logic [1:0] grant,
              output logic [1:0] request,
              output logic rst,
@@ -1162,7 +1160,7 @@ endmodule
 顶层网单连接了测试平台和DUT
 没有接口的顶层网单
 
-```SystemVerilog
+```systemverilog
 module top;
     logic [1:0] grant,request;
     bit clk,rst;
@@ -1177,7 +1175,7 @@ endmodule
 
 对仲裁器的第一个改进就是将连线捆绑成一个接口
 
-```SystemVerilog
+```systemverilog
 interface arb_if(input bit clk);
     logic [1:0] grant,request;
     logic rst;
@@ -1185,7 +1183,7 @@ endinterface
 ```
 
 使用了简单接口的仲裁器
-```SystemVerilog
+```systemverilog
 module arb_port(arb_if arb);
     always@(posedge arbif.clk or posedge arbif.rst)
         begin
@@ -1198,7 +1196,7 @@ module arb_port(arb_if arb);
 ```
 
 使用简单仲裁器接口的测试平台
-```SystemVerilog
+```systemverilog
 module test(arb_if arbif)
     initial begin
         @(posedge arbif.clk) arbif.request <= 2'b01;
@@ -1207,23 +1205,23 @@ module test(arb_if arbif)
             $display("@%0t: a1: grant!=2'b01", $time);
         $finish;
     end
-endmodule : test
+endmodule test
 ```
 
 使用简单仲裁器接口的top模块
-```SystemVerilog
+```systemverilog
 module top; 
     bit clk;
     always #5 clk = ~clk;
     arb_if arbif(clk);
     arb a1(arbif);
     test t1(arbif);
-endmodule : top
+endmodule top
 ```
 
 
 接口引入的 错误示范
-```SystemVerilog
+```systemverilog
 // 错误示例 (bad_test.sv)
 module bad_test(arb_if arbif); // 1. 这里引用了 arb_if
     'include "MyTest.sv"       // 2. 合法的 include
@@ -1241,7 +1239,7 @@ endmodule
 
 正确做法:
 
-```SystemVerilog
+```systemverilog
 // 正确做法 (good_test.sv)
 // 正确写法
 'include "arb_if.sv"      // 1. 先定义接口（此时处于全局作用域）
@@ -1259,7 +1257,7 @@ endmodule
 可以将接口的信号直接连接到每个端口上
 连接接口到使用端口 的模块
 
-```SystemVerilog
+```systemverilog
 module top;
     bit clk;
     always #5 clk = ~clk;
@@ -1267,13 +1265,13 @@ module top;
     arb_port a1(.grant(arbif.grant),.request(arbif.request),.rst(arbif.rst));
 
     test t1(arbif);
-endmodule : top
+endmodule top
 ```
 
 使用modimport将接口中的信号分组
 
 在接口中使用modport结构能够将信号分组并指定方向
-```SystemVerilog
+```systemverilog
 interface arb_if(input bit clk);
 
     logic [1:0] grant,request;
@@ -1297,7 +1295,7 @@ endmodule
 
 创建接口监视模块
 
-```SystemVerilog
+```systemverilog
 module monitor (arb_if.MONITOR arbif);
 
     always @(posedge arbif.request[0]) begin
@@ -1319,7 +1317,7 @@ endmodule
 ### 激励时序
 
 带时钟的接口
-``` SystemVerilog
+```systemverilog
 
 interface arb_if(input bit clk);
     logic [1:0] grant,request;
@@ -1349,7 +1347,7 @@ endmodule
 
 虽然VMM中有一条规则指明将接口信号定义为wire,但是本书建议在接口中将信号定义为logic
 
-```SystemVerilog
+```systemverilog
 interface asynch_if();
     logic l;
     wire w;
@@ -1373,7 +1371,7 @@ Verilog时序问题
 对设计输出信号的采样存在者相同的问题
 你可能知道下一个时钟将会出现在100ns的时候
 
-```SystemVerilog
+```systemverilog
 module memory(input wire start,write,
               input wire [7:0] addr,
               inout wire [7:0] data);
@@ -1415,7 +1413,7 @@ endmodule
 SystemVerilog在一个程序块中,跟模块非常相似:模块含有代码和变量,可以在
 其他模块中实例化,但是,程序不能有任何层次级别,例如模块的实例,接口或程序
 
-```SystemVerilog
+```systemverilog
 flowchart TD
     Start([From previous time slot]) --> Active
 
@@ -1454,7 +1452,7 @@ flowchart TD
 | Postponed | 为测试平台的输入采样信号 |
 
 
-```SystemVerilog
+```systemverilog
 program automatic test(arb_if.TEST arbif);
 
     initial begin
@@ -1464,7 +1462,7 @@ program automatic test(arb_if.TEST arbif);
         if(arbif.cb.grant != 2'b01)
             $display("@%0t: a1: grant!=2'b01", $time);
         end
-endprogram : test
+endprogram
 ```
 
 测试代码应当包含在一个单个的程序块中,应当使用OOP通过对象而非模块来创建一个动态,分层的测试平台
@@ -1525,7 +1523,7 @@ SystemVerilog增加了一种结束仿真的方法,SystemVerilog把任何一个�
 
 使用Verilog的@ 和 wait 来同步测试平台中的信号
 
-```SystemVerilog
+```systemverilog
 program automatic test(bus_if.TB bus);
     initial begin
        @bus.cb;  //在时钟块的有效时钟沿继续
@@ -1545,13 +1543,13 @@ endprogram
 
 arb在一个时钟周期的中间产生grant信号的值1和2,然后在时钟沿产生值3
 
-```SystemVerilog
+```systemverilog
 `timescale 1ns/1ns
 program test(arb_if.TEST arbif);
     initial begin
         $monitor("@%0t: grant=%0d", $time, arbif.cb.grant);
 
-        $ 50ns $display("End of TEST");
+        #50ns $display("End of TEST");
         end
     endprogram
 
@@ -1570,7 +1568,7 @@ arbif.cb.grant在时钟边沿到来之前获得数值,当接口的输入信号�
 
 接口信号驱动
 
-```SystemVerilog
+```systemverilog
 program automatic test(arb_if.TEST arbif);
     arbif.cb.request <= 2'b01;
     $display("@%0t: Drove req=01", $time);
@@ -1578,7 +1576,7 @@ program automatic test(arb_if.TEST arbif);
     if(arbif.cb.grant != 2'b01)
         $display("@%0t: a1: grant!=2'b01", $time);
     end
-endprogram : test
+endprogram
 ```
 
 挡在时钟模块中使用modport时候,任何同步接口信号都必须加上接口(arbif)和时钟快名(cb)的前缀
@@ -1589,7 +1587,7 @@ endprogram : test
 
 程序和接口中的双向信号
 
-```SystemVerilog
+```systemverilog
 interface master_if (input bit clk);
     wire [7:0] data; //双向信号
     clocking cb @(posedge clk);
@@ -1626,7 +1624,7 @@ SystemVerilog程序比Verilog更接近C程序
 不应该将时钟发生器放在程序块里
 
 以下为一个正确的时钟发生器
-```SystemVerilog
+```systemverilog
 module clock_generator(output bit clk);
     initial
     always #5 clk = ~clk; //在时间0之后生成时钟沿
@@ -1638,7 +1636,7 @@ endmodule
 
 ### 将这些模块连接起来
 
-```SystemVerilog
+```systemverilog
 module top;
     bit clk;
     always #4 clk = ~clk; // 4ns周期的时钟
@@ -1646,7 +1644,7 @@ module top;
     arb_if arbif(.*);
     arb a1(.*);
     test t1(.*);
-endmodule : top
+endmodule top
 ```
 
 快捷符号.*(隐式端口连接),能自动在当前级别自动连接模块实例的端口到具体信号,只要端口和信号的名字和数据类型相同
@@ -1655,7 +1653,7 @@ endmodule : top
 
 SystemVerilog编译器不会让你成功编译任何一个端口列表中含有接口的模块或程序块
 
-```SystemVerilog    
+```systemverilog
 module uses_a_port(inout bit not_connected);
 ...
 endmodule
@@ -1725,7 +1723,7 @@ SystemVerilog引入了编译单元(compilation unit),它是一起编译的源文
 
 本书将块外作用域称为"顶层作用域"，在这个作用域内你可以定义变量,参数,数据类型甚至方法
 
-```SystemVerilog
+```systemverilog
 //root.sv
 `timescale 1ns/1ns
 parameter int TIMEOUT = 1_000_000;
@@ -1744,7 +1742,7 @@ endprogram
 ```
 
 使用$root的跨模块的引用
-```SystemVerilog
+```systemverilog
 `timescale 1ns/1ns
 parameter TIMEOUT = 1_000_000;
 top t1(); //顶层模块的显式例化
@@ -1785,7 +1783,7 @@ top t1();：这是整段代码中最关键的一行。 它在顶层作用域直�
 测试平台的过程代码可以检查待测设计的信号值和测试平台的信号值
 并且在存在问题的时候采取相应的行动,例如产生了总线请求,就期望在两个时钟周期后产生应答
 
-```SystemVerilog
+```systemverilog
 bus.cb.request<=1;
 repeat (2) @bus.cb;
 if(bus.cb.grant != 2'b01)
@@ -1793,13 +1791,13 @@ if(bus.cb.grant != 2'b01)
 //测试平台剩余部分
 ```
 
-```SystemVerilog
+```systemverilog
 bus.cb.request <= 1;
 repeat (2) @bus.cb;
 a1: assert (bus.cb.grant == 2'b01);
 ```
 
-```SystemVerilog
+```systemverilog
 bus.cb.request <= 1;
 repeat(2) @bus.cb;
 a1 : assert(bus.cb.grant == 2'b01);
@@ -1807,7 +1805,7 @@ a1 : assert(bus.cb.grant == 2'b01);
 
 一个立即断言有可选的then和else分句,如果你想改变默认的消息,可以添加自己的输出信息
 
-```SystemVerilog
+```systemverilog
 a1:assert(bus.cb.grant == 2'b01)
 else $error("Grant not asserted");
 ```
@@ -1817,7 +1815,7 @@ else $error("Grant not asserted");
 可以认为它是一个连续运行的模块,它为整个仿真过程检查信号的值
 需要在断言内指定一个采样时钟
 
-```SystemVerilog
+```systemverilog
 interface arb_if(input bit clk);
     logic [1:0] grant,request;
     logic rst;
@@ -1835,7 +1833,7 @@ $isunknown(request) == 0：使用了系统函数 $isunknown。如果 request 信
 
 四端口ATM路由器
 
-```SystemVerilog
+```systemverilog
 module atm_router(
     // 4 x Level 1 Utopia ATM layer Rx Interfaces (接收接口)
     Rx_clk_0, Rx_clk_1, Rx_clk_2, Rx_clk_3,
@@ -1878,7 +1876,7 @@ module atm_router(
 endmodule
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 4.1 未使用接口的顶层简单
 module top;
     bit clk;
@@ -1932,7 +1930,7 @@ module top;
 endmodule
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 4.2 使用端口的测试平台 (Verilog-1995)
 module test(
     // 4 x Level 1 Utopia ATM layer Rx Interfaces
@@ -1994,7 +1992,7 @@ endmodule
 
 ATM接口简化
 
-```SystemVerilog
+```systemverilog
 interface Rx_if(input logic clk);
     logic [7:0] data;
     logic soc,en,clav,rclk;
@@ -2008,7 +2006,7 @@ interface Rx_if(input logic clk);
                input data,soc,clav);
 
     modport TB(clocking cb);
-endinterface : Rx_if
+endinterface Rx_if
 ```
 
 Tx接口
@@ -2026,7 +2024,7 @@ interface Tx_if(input logic clk);
     modport DUT(output soc,tclk,en,
               input data,clav);
     modport TB (clocking cb);
-endinterface : Tx_if
+endinterface Tx_if
 ```
 使用module atm_router(Rx_if.DUT Rx0,Rx1,Rx2,Rx3,
     Tx_if.DUT Tx0,Tx1,Tx2,Tx3,
@@ -2036,7 +2034,7 @@ endmodule
 
 使用接口的ATM顶层网单
 
-```SystemVerilog
+```systemverilog
 module top;
     bit clk, rst;
 
@@ -2064,14 +2062,14 @@ module top;
         clk, rst
     );
 
-endmodule : top
+endmodule top
 ```
 
 使用接口的ATM测试平台
 
 接口中的名字都使用了固定名字,所以需要把同样的代码为4x4 ATM路由器复制四次
 
-```SystemVerilog
+```systemverilog
 program test(Rx_if.TB Rx0,Rx1,Rx2,Rx3,
               Tx_if.TB Tx0,Tx1,Tx2,Tx3,
               input logic clk,output logic rst);
@@ -2096,7 +2094,7 @@ program test(Rx_if.TB Rx0,Rx1,Rx2,Rx3,
             Tx0.cb.clav <= 0;
         end
     endtask : receive_cell0
-endprogram : test
+endprogram
 ```
 
 ### ref端口的方向
@@ -2118,7 +2116,7 @@ ref端口的行为完全不同,它其实是对变量的引用,它的值是该变
 
 模块或者程序可以定义一个或者多个final块来执行仿真器退出前的代码
 
-```SystemVerilog
+```systemverilog
 program test;
     int errors,warnings;
 
@@ -2128,7 +2126,7 @@ program test;
 
     final 
         $display("Test done with %d errors and %d warnings",errors,warnings);
-    endprogram : test
+    endprogram
 ```
 
 ### LC3取指模块的定向测试(directed test)
@@ -2162,7 +2160,7 @@ fetch 块有如下输出：
 
 取指模块的 verilog 代码具有输入和输出端口。
 
-```SystemVerilog
+```systemverilog
 module fetch(clock,reset,state,pc,npc,rd,taddr,br_taken);
     input clock,reset,br_taken;
     input [15:0] taddr;
@@ -2174,7 +2172,7 @@ module fetch(clock,reset,state,pc,npc,rd,taddr,br_taken);
 endmodule
 ```
 
-```SystemVerilog
+```systemverilog
 interface fetch_ifc(input bit clock);
     logic reset,br_taken,rd;
     logic [15:0] taddr;
@@ -2197,12 +2195,12 @@ interface fetch_ifc(input bit clock);
         input pc,npc,rd,taddr,state,br_taken;
     endclocking //cbm
     modport MONITOR(clocking cbm);
-endinterface : fetch_ifc
+endinterface fetch_ifc
 ```
 
 取指模块的定向测试
 
-```SystemVerilog
+```systemverilog
 program automatic test(fetch_ifc.TEST if_t,fetch_ifc.MONITOR if_m);
     initial begin
         cntrl_e cntrl;
@@ -2269,7 +2267,7 @@ program automatic test(fetch_ifc.TEST if_t,fetch_ifc.MONITOR if_m);
 endprogram // test
 ```
 
-```SystemVerilog
+```systemverilog
 `timescale 1ns / 1ns
 
 typedef enum(CNTRL_UPDATE_PC = 0,
@@ -2289,7 +2287,7 @@ typedef enum(CNTRL_UPDATE_PC = 0,
         fetch_ifc fif(clock);
         test t1(fif,fif);
         fetch f1(clock,fif.reset,fif.state,fif.pc,fif.npc,fif.rd,fif.taddr,fif.br_taken);
-    endmoudule //top
+    endmodule //top
 ```
 
 ## 面向对象编程基础
@@ -2298,7 +2296,7 @@ typedef enum(CNTRL_UPDATE_PC = 0,
 
 类封装了数据和操作这些数据的子程序，这个数据包包含了地址，CRC和一个存储数值的数组,在Transaction类中有两个子程序:一个输出数据包地址的函数和一个计算循环冗余校验(CRC: cyclic redundancy check) 函数
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     bit [31:0] addr,crc,data[8];
 
@@ -2310,7 +2308,7 @@ class Transaction;
         crc = addr ^ data.xor;
     endfunction
 
-endclass : Transaction
+endclass
 ```
 
 ### OOP术语
@@ -2330,9 +2328,9 @@ endclass : Transaction
 ### 创建新对象
 
 Transaction tr; //声明一个句柄
-Tr = new(); //为一个Transaction 对象分配空间
+tr = new(); //为一个Transaction 对象分配空间
 
-```SystemVerilog
+```systemverilog
 
 class Transaction;
     logic [31:0] addr,crc,data[8];
@@ -2345,7 +2343,7 @@ class Transaction;
 endclass
 ```
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     logic [31:0] addr,crc,data[8];
     function new(logic [31:0] a = 3,d = 5);
@@ -2362,22 +2360,22 @@ end
 
 ```
 
-```SystemVerilog
+```systemverilog
 class Transaction;
 
-endclass : Transaction
+endclass
 
 class Driver;
     Transaction tr;
     funtion new();
         tr = new();
     endfunction
-endclass : Driver
+endclass Driver
 ```
 
 为对象创建一个句柄
 
-```SystemVerilog
+```systemverilog
 Transaction t1,t2; //声明两个句柄
 t1 = new(); // 为第一个Transaction 对象分配地址
 t2 = t1; // t1和t2都指向该对象
@@ -2389,7 +2387,7 @@ t1 = new(); // 为第二个Transaction对象分配地址
 当最后一个句柄不再引用某个对象了
 SystemVerilog就释放该对象的空间
 
-```SystemVerilog
+```systemverilog
 Transaction t; //创建一个句柄
 t = new(); //分配一个新的Transaction
 t = new(); //分配第二个,并且释放第一个t
@@ -2399,7 +2397,7 @@ Verilog会自动回收垃圾
 
 ### 使用对象
 
-```SystemVerilog
+```systemverilog
 Transaction t; //声明一个Transaction句柄
 t = new(); //创建一个Transaction对象
 t.addr = 32'h42; //设置变量的值
@@ -2410,14 +2408,14 @@ t.display(); //调用一个子程序
 
 含有一个静态变量的类
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     static int count = 0;
     int id;
     function new()
        id = count++;
     endfunction
-endclass : Transaction
+endclass
 
 Transaction t1,t2;
 initial begin
@@ -2430,7 +2428,7 @@ end
 
 通过类名访问静态变量
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     static int count = 0;
 endclass
@@ -2441,7 +2439,7 @@ initial begin
 end
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 5.12 显示静态变量的静态方法
 
 class Transaction;
@@ -2467,7 +2465,7 @@ end
 
 ### 类的方法
 
-```SystemVerilog
+```systemverilog
 // 例 5.13 类中的方法
 
 class Transaction;
@@ -2501,7 +2499,7 @@ end
 
 ### 在类之外定义方法
 
-```SystemVerilog
+```systemverilog
 // 例 5.14 块外方法声明
 
 class Transaction;
@@ -2532,7 +2530,7 @@ endfunction
 
 名字作用域
 
-```SystemVerilog
+```systemverilog
 int limit; // $root.limit
 program automatic p;
     int limit; // p.limit
@@ -2557,7 +2555,7 @@ endprogram
 ```
 
 将类移入package来查找程序错误
-```SystemVerilog
+```systemverilog
 package Mistake;
     class Bad;
         logic [31:0] data[];
@@ -2577,7 +2575,7 @@ endprogram
 
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 5.20 Statistics 类的声明
 
 class Statistics;
@@ -2599,7 +2597,7 @@ endclass
 
 在另外一个类中使用这个类
 
-```SystemVerilog
+```systemverilog
 // 例 5.21 封装 Statistics 类
 
 class Transaction;
@@ -2620,7 +2618,7 @@ endclass
 
 编译顺序问题
 
-```SystemVerilog
+```systemverilog
 // 例 5.22 顺序编译
 typedef class Statistics; //定义低级别级
 
@@ -2638,7 +2636,7 @@ endclass
 
 传递对象,SystemVerilog传递该标量的地址,所以方法可以修改标量变量的值,如果你不使用ref关键字,SystemVerilog将该变量的值复制到参数变量中
 
-```SystemVerilog
+```systemverilog
 task transmit(Transaction t);
     CBbus.rx_data <= t.data;
     t.stats.startT = $time;
@@ -2648,13 +2646,13 @@ endtask
 Transaction t;
 initial begin
     t = new();
-    t.addr - 42; //初始化数值
+    t.addr = 42; //初始化数值
     transmit(t); //将对象传递给任务
 end
 ```
 
 在任务中修改句柄
-```SystemVerilog
+```systemverilog
 // 例 5.21 封装 Statistics 类
 
 class Transaction;
@@ -2674,7 +2672,7 @@ endclass
 ```
 
 正确的产生器,创建多个对象
-```SystemVerilog
+```systemverilog
 // 例 5.23 产生器
 task generator_good(int n)
     Transaction t;
@@ -2690,7 +2688,7 @@ endtask
 句柄数组
 在写测试平台的时候,可能需要保存并且引用许多对象,可以创建句柄数组,数组的每个元素指向一个对象
 
-```SystemVerilog
+```systemverilog
 // 例 5.24 句柄数组
 task generator();
     transmit tarray[10];
@@ -2709,7 +2707,7 @@ endtask
 
 使用new操作符复制一个对象
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     bit [31:0] addr,crc,data[8];
 endclass
@@ -2751,7 +2749,7 @@ end
 这两个Transaction对象都指向同一个Statistics对象,
 所以使用src句柄修改startT会影响dst句柄可以看到的值
 
-```SystemVerilog
+```systemverilog
 // 例 5.31 含有 copy 函数的简单类
 class Transaction;
     bit [31:0] addr, crc, data[8]; // 没有 Statistic 句柄
@@ -2775,7 +2773,7 @@ end
 
 编写自己的深层复制函数
 
-```SystemVerilog
+```systemverilog
 // 例 5.33 深层复制函数
 class Transaction;
     bit [31:0] addr, crc, data[8];
@@ -2801,7 +2799,7 @@ endclass
 
 使用pack和unpack函数
 
-```SystemVerilog
+```systemverilog
 // 例 5.34 使用 pack 和 unpack 函数
 Transaction tr,tr2;
 byte b[40];
@@ -2833,7 +2831,7 @@ initial begin
 
 Test处在最高层,即处在例化Environment类的程序中,功能覆盖定义可以放在Environment类的内部或者外部
 
-```SystemVerilog
+```systemverilog
 // 基本的事务类
 class Transator; //通用类
     Transaction tr;
@@ -2856,7 +2854,7 @@ endclass
 
 带有随机变量的简单类
 
-```SystemVerilog
+```systemverilog
 class Packet;
     //随机变量
     randbit [31:0] src,dst,data[8];
@@ -2882,7 +2880,7 @@ Packet p;
 
 有用的激励并不仅仅是随机值——各个变量之间有着相互关系,否则仿真器可能需要很长时间才能产生需要的激励值,或者激励向量里会包含无效的值,需要用包含一个或多个约束表达式的约束块定义这些相关系
 
-```SystemVerilog
+```systemverilog
 // 例 6.3 受约束的随机类
 class Stim;
     const bit [31:0] CONGEST_ADDR = 42;
@@ -2904,14 +2902,14 @@ class Stim;
 endclass
 ```
 固定顺序的约束
-```SystemVerilog
+```systemverilog
 // 例 6.4 固定顺序的约束
 class order;
     rand bit [15:0] lo,med,hi;
     constraint good{lo < med; med < hi;}
 endclass
 ```
-```SystemVerilog
+```systemverilog
 // 例 6.8 动态改变权重
 // 总线操作:字节、字或长字
 class BusOp;
@@ -2931,7 +2929,7 @@ endclass
 ```
 
 集合成员和inside运算符
-```SystemVerilog
+```systemverilog
 rand int c;
 int lo,hi;
 constraint c_lohi {
@@ -2939,26 +2937,7 @@ constraint c_lohi {
 }
 ```
 
-```SystemVerilog
-// 例 6.8 动态改变权重
-// 总线操作:字节、字或长字
-class BusOp;
-    // 操作数长度
-    typedef enum {BYTE, WORD, LWRD} length_e;
-    rand length_e len;
-
-    // dist 约束的权重
-    bit [31:0] w_byte=1, w_word=3, w_lwrd=5;
-
-    constraint c_len {
-        len dist {BYTE := w_byte,   // 使用可变的权重
-                  WORD := w_word,   // 来选择随机的操作数长度
-                  LWRD := w_lwrd};
-    }
-endclass
-```
-
-```SystemVerilog
+```systemverilog
 // 例 6.10 使用"$"指定最大和最小值
 rand bit [6:0] b; // 0 <= b <= 127
 rand bit [5:0] e; // 0 <= e <= 63
@@ -2969,7 +2948,7 @@ constraint c_range {
 }
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 6.11 (推测) 在 inside 约束中有重复的值
 class Weighted;
     rand int val;
@@ -3005,7 +2984,7 @@ end
 
 集合里的每一个值取出来的概率都是相同的,即使值在数组中出现多次,可以把inside约束看成foreach约束
 
-```SystemVerilog
+```systemverilog
 // 例 6.16 从数组中取出随机值的类
 class Days;
     // 定义枚举类型：一周七天
@@ -3042,7 +3021,7 @@ end
 ```
 
 使用randc随机选取数组的值
-```SystemVerilog
+```systemverilog
 // 例 6.18 使用 randc 随机选取数组的值
 // 例 6.18 使用 randc 随机地选取数组的值
 class RandcInside;
@@ -3075,7 +3054,7 @@ end
 ->操作符可以产生和case操作符效果类似的语句块,它可以用于枚举类型的表达式，
 带有->操作符的约束块
 
-```SystemVerilog
+```systemverilog
 // 例 6.20 条件约束
 class BusOp;
  constraint c_io{
@@ -3084,9 +3063,8 @@ class BusOp;
  ```
 
 带有if else操作符的约束块
-```SystemVerilog
-class BusOp;
-    constraint c_len_rw{
+```systemverilog
+class BusOp;`n    constraint c_len_rw{
         if(op == READ)
            len inside {[BYTE:LWRD]};
         else
@@ -3121,7 +3099,7 @@ SystemVerilog 同时计算四个约束表达式。$r$ 必须小于 $t$，而 $t$
 | **C** | 26 | 26 | 29 | | **F** | 28 | 28 | 29 |
 
 即使 `->` 和 `if-else` 这些看起来像 if-else 程序性语句的条件约束，也是双向的。例如，约束 `{(a==1) -> (b==0)}` 和 `{(!(a==1)) || b==0;}` 是等价的。约束求解器并不是先检查 `a==1`，然后再令 `b==0`。事实上，如果增加一个约束 `{b==1;}`，约束求解器将把 a 置为 0。
-```
+
 
 ### 解的概率
 
@@ -3131,7 +3109,7 @@ SystemVerilog 同时计算四个约束表达式。$r$ 必须小于 $t$，而 $t$
 
 带有关系操作的类
 
-```SystemVerilog
+```systemverilog
 class Impl;
     rand bit x;
     rand bit [1:0] y;
@@ -3145,7 +3123,7 @@ y的值依赖于x的值
 
 关系操作和双向约束
 
-```SystemVerilog
+```systemverilog
 
 class Imp2;
   rand bit x;  //0或1
@@ -3158,7 +3136,7 @@ endclass
 ```
 
 使用solve...before 约束引导概率分布
-```SystemVerilog
+```systemverilog
 
 class SolveBefore;
     rand bit x;
@@ -3197,9 +3175,6 @@ solve y before x 约束的解
 
 ### 控制多个约束块
 
-```SystemVerilog
-这是图片中的 SystemVerilog 代码：
-
 ```systemverilog
 // 例 6.28 使用 constraint_mode() 函数
 class Packet;
@@ -3215,11 +3190,9 @@ initial begin
     // 通过禁止 c_short 约束产生长包
     p.c_short.constraint_mode(0);
     assert (p.randomize());
-
     transmit(p);
 
     // 通过禁止所有的约束，然后使能短包约束来产生短包
-    // then enabling only the short constraint
     p.constraint_mode(0);
     p.c_short.constraint_mode(1);
     assert (p.randomize());
@@ -3227,15 +3200,12 @@ initial begin
 end
 ```
 
-### 代码解析
-
 这段代码演示了如何使用 `constraint_mode()` 方法在运行时动态控制约束的开启与关闭。
 
 - **`class Packet`**：定义了一个包含随机变量 `length` 和两个互斥约束（`c_short` 和 `c_long`）的类。
 - **`p.c_short.constraint_mode(0);`**：显式地禁用了 `c_short` 约束。此时只有 `c_long` 生效，因此生成的 `length` 会在 1000 到 1023 之间（长包）。
 - **`p.constraint_mode(0);`**：禁用了该对象上的 **所有** 约束。
 - **`p.c_short.constraint_mode(1);`**：在禁用所有约束后，单独重新启用了 `c_short`。此时只有 `c_short` 生效，生成的 `length` 会在 1 到 32 之间（短包）。
-```
 
 ### 有效性约束
 
@@ -3352,7 +3322,7 @@ b = $urandom_range(5);        // 值的范围是 0~5
 
 ### 约束的技巧和技术
 
-```SystemVerilog
+```systemverilog
 //使用变量的约束
 class bounds；
     rand int size;
@@ -3436,7 +3406,7 @@ assert(cmd.randomize());
 
 如果只有少数几个变量需要修改,可以使用rand_mode函数把这些变量设置为非随机变量
 
-```SystemVerilog
+```systemverilog
 // 例 6.35 用 rand_mode 禁止变量的随机化
 // 产生变长负载的包
 class Packet;
@@ -3475,7 +3445,7 @@ end
 
 在调用randomize()函数时只传递变量的一个子集,这样就只会随机化类里的几个变量
 
-```SystemVerilog
+```systemverilog
 class Rising;
     byte low;//非随机变量
     rand byte med,hi;//随机变量
@@ -3495,7 +3465,7 @@ end
 ```
 
 
-```SystemVerilog
+```systemverilog
 // 例 6.38 使用 constraint_mode 打开或关闭约束
 class Instruction;
     rand opcode_e opcode;
@@ -3562,7 +3532,7 @@ endprogram
 
 约束动态数组的大小
 
-```SystemVerilog
+```systemverilog
 class dyn_size;
     rand logic [31:0] d[];
     constraint d_size {d.size() inside {[1:10]};}
@@ -3571,7 +3541,7 @@ endclass
 
 随机脉冲类
 
-```SystemVerilog
+```systemverilog
 class Pulse;
     rand bit strobe[MAX_TRANSFER_LEN];
     constraint c_set_four{
@@ -3596,7 +3566,7 @@ end
 
 约束数组和队列的每一个元素
 
-```SystemVerilog
+```systemverilog
 class goot_sum5;
     rand uint len[];
     constraint c_len{
@@ -3610,7 +3580,7 @@ endclass
 
 使用foreach产生递增的数组元素的值
 
-```SystemVerilog
+```systemverilog
 class Ascend;
     rand uint d[10];
     constraint c{
@@ -3623,7 +3593,7 @@ endclass
 
 使用foreach产生唯一的元素值
 
-```SystemVerilog
+```systemverilog
 class UniqueSlow;
     rand bit[7:0] ua[64];
     constraint c{
@@ -3635,7 +3605,7 @@ class UniqueSlow;
     endclass
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 6.59 用 randc 辅助类产生唯一的元素值
 class randc8;
     randc bit [7:0] val;
@@ -3656,7 +3626,7 @@ endclass
 ```
 
 唯一值发生器
-```SystemVerilog
+```systemverilog
 class Unique;
     rand bit [7:0] val;
     int max_value;
@@ -3670,7 +3640,7 @@ class Unique;
 endclass
 ```
 
-```SystemVerilog
+```systemverilog
 class UniqueArray;
     int max_array_size, max_value;       // 数组最大长度、元素最大值
     rand bit [7:0] a[];                  // 随机化动态数组（元素为8位无符号数）
@@ -3704,7 +3674,7 @@ endclass
 
 使用UniqueArray类
 
-```SystemVerilog
+```systemverilog
 program automatic test;
     UniqueArray ua;
     initial begin
@@ -3719,7 +3689,7 @@ endprogram
 ```
 随机化句柄数组
 
-```SystemVerilog
+```systemverilog
 parameter MAX_SIZE=10;
 
 class RandStuff;
@@ -3830,7 +3800,7 @@ for (int i=0; i<15; i++) begin ... end
 
 使用randcase和$urandom_range的随机控制
 
-```SystemVerilog
+```systemverilog
 initial begin
     int len;
     randcase
@@ -3845,7 +3815,7 @@ end
 
 等效的约束类
 
-```SystemVerilog
+```systemverilog
 class LenDist;
     rand int len;
     constraint c
@@ -3865,32 +3835,7 @@ end
 
 使用randcase建立决策树
 
-```SystemVerilog
-initial begin
-    for (int i=0; i<15; i++) begin
-        randsequence (stream)
-            stream : cfg_read :=1 |
-                     io_read   :=2 |
-                     mem_read  :=5;
-
-            cfg_read : { cfg_read_task; } |
-                       { cfg_read_task; } cfg_read;
-
-            mem_read : { mem_read_task; } |
-                       { mem_read_task; } mem_read;
-
-            io_read  : { io_read_task; } |
-                       { io_read_task; } io_read;
-        endsequence
-    end // for
-end
-
-task cfg_read_task;
-    ...
-endtask
-```
-
-```SystemVerilog
+```systemverilog
 // 例 6.67 用 randcase 建立决策树
 initial begin
     // Level 1
@@ -3923,7 +3868,7 @@ endtask
 ### 随机数发生器
 
 简单的伪随机数发生器
-```SystemVerilog
+```systemverilog
 reg [31:0] state = 32'h12345678;
 function logic [31:0] my_random;
     logic [63:0] s64;
@@ -3938,11 +3883,11 @@ endfunction
 
 以太网交换机的配置
 
-```SystemVerilog
+```systemverilog
 class eth_cfg;
     rand bit [3:0] in_use; //测试中使用的端口
     rand bit [47:0] mac_addr[4]; //MAC地址
-    rand bit [3：0] is_100; 
+    rand bit [3:0] is_100; 
     rand uint run_for_n_frames; //测试中的帧数
 
     //在unicast 模式时设置某些地址位
@@ -3955,13 +3900,13 @@ class eth_cfg;
         run_for_n_frames inside{[1:100]};
     }
 
-endclass : eth_cfg
+endclass eth_cfg
 ```
 
 在Environment类的不同阶段使用了配置类,配置在Environment的构造函数是创建，
 但直到gen_cfg阶段才随机化,这就使你在调用randomize()之前打开或关闭约束
 
-```SystemVerilog
+```systemverilog
 class Environment;
     eth_cfg cfg;          // 配置对象句柄
     eth_src gen[4];       // 4个发生器（Generator）数组
@@ -4000,10 +3945,10 @@ class Environment;
         // 暂时还没有使用
     endtask
 
-endclass : Environment
+endclass Environment
 ```
 
-```SystemVerilog
+```systemverilog
 program test;
     Environment env;
     initial begin
@@ -4018,7 +3963,7 @@ program test;
 
 修改随机配置的简单测试
 
-```SystemVerilog
+```systemverilog
 program test;
     Environment env;
 
@@ -4037,7 +3982,7 @@ program test;
 
 ### 线程的使用
 
-```SystemVerilog
+```systemverilog
 // 例 7.1 fork...join 和 begin...end 的相互作用
 initial begin
     $display("@%0t: start fork...join example", $time);
@@ -4133,7 +4078,7 @@ end
 
 完整的测试平台还包括用于驱动,监测,检验以及其他操作的类,所有这些都带有并发运行的事务处理器
 
-```SystemVerilog
+```systemverilog
 // 例 7.7 带有任务 run 的发生器/驱动器类
 class Gen_drive;
     // 创建 N 个数据包的事务处理器
@@ -4169,7 +4114,7 @@ end
 
 动态线程的创建
 
-```SystemVerilog
+```systemverilog
 program automatic test(bus_ifc.TB bus);
     task check_trans(Transaction tr);
         fork
@@ -4265,7 +4210,7 @@ endprogram
 等待所有衍生线程
 
 使用wait fork等待所有子线程结束
-```SystemVerilog
+```systemverilog
 task run_threads;
     fork
         check_trans(tr1) ; //产生第一个线程
@@ -4361,7 +4306,7 @@ endtask
 
 等待回应,或者达到某个最大时延
 
-```SystemVerilog
+```systemverilog
 parameter TIME_OUT = 1000;
 task check_trans(Transaction tr);
     fork
@@ -4383,7 +4328,7 @@ endtask
 
 停止多个线程
 
-```SystemVerilog
+```systemverilog
 initial begin
     check_trans(tr0); //线程0
     fork
@@ -4398,7 +4343,7 @@ initial begin
 end
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 7.18 使用带标号的 disable 来停止线程
 initial begin
     check_trans(tr0);               // 线程 0
@@ -4416,7 +4361,7 @@ end
 
 当禁止被多次调用的任务，要小心停止的可能会比预期得多,按照预期,如果你在某个任务内部禁止该任务,就像在任务的返回语句,这也会停止所有由该任务启动的线程,如果该任务已经被多个线程调用,禁止其中的一个将导致它们全部被禁止
 
-```SystemVerilog
+```systemverilog
 // 例 7.19 使用 disable 标号来停止一个任务
 task wait_for_time_out(int id);
     if (id == 0)
@@ -4457,7 +4402,7 @@ System Verilog可以使用时间,旗语和信箱来完成IPC
 Verilog事件可以实现线程间的同步,就像在打电话时一个人等待另一个人的呼叫
 
 
-```verilog
+```systemverilog
 // 例 7.20 Verilog 中阻塞在一个事件上
 event e1, e2;
 
@@ -4516,7 +4461,7 @@ end
 
 等待事件的触发
 
-```SystemVerilog
+```systemverilog
 // 例 7.22 等待事件
 event e1, e2;
 
@@ -4542,7 +4487,7 @@ end
 
 等待事件导致零时延循环
 
-```SystemVerilog
+```systemverilog
 forever begin
 //零时延循环
     wait(handshake.triggered());
@@ -4553,7 +4498,7 @@ end
 
 等待事件 的边沿
 
-```SystemVerilog
+```systemverilog
 // 例 7.23 等待事件的边沿
 forever begin
     @handshake;
@@ -4564,7 +4509,7 @@ end
 
 传递事件,SystemVerilog中的事件可以像参数一样传递给子程序
 
-```SystemVerilog
+```systemverilog
 class Generator；
     event done;
     function new(event done)
@@ -4598,7 +4543,7 @@ endprogram
 
 解决办法是创建一个新线程并从中衍生子线程,然后保证每个线程阻塞在每个发生器的一个事件上
 
-```SystemVerilog
+```systemverilog
 event done[N_GENERATORS];
 initial begin
     foreach (gen[i]) begin
@@ -4618,7 +4563,7 @@ end
 
 通过对触发事件进行计数来等待多个线程
 
-```SystemVerilog
+```systemverilog
 event done[N_GENERATORS];
 int done_count;
 initial begin
@@ -4642,7 +4587,7 @@ end
 
 使用线程计数来等待多个线程
 
-```SystemVerilog
+```systemverilog
 class Generator;
     static int thread_count = 0;
     task run();
@@ -4679,7 +4624,7 @@ end
 
 如果试图获取一个旗语而不希望被阻塞，可以使用try_get()函数,它返回1表示有足够多的钥匙,而返回0表示钥匙不够
 
-```SystemVerilog
+```systemverilog
 // 例 7.30 用旗语实现对硬件资源的访问控制
 program automatic test (bus_ifc.TB bus);
     semaphore sem;                // 创建一个旗语
@@ -4717,7 +4662,7 @@ endprogram
 
 创建多个对象的良性发生器
 
-```SystemVerilog
+```systemverilog
 task generator_good(int n,mailbox mbx);
     Transaction t;
     repeat(n) begin
@@ -4731,7 +4676,7 @@ endtask
 
 接收来自信箱事务的良性驱动器
 
-```SystemVerilog
+```systemverilog
 task driver(mailbox mbx);
     Transaction t;
     forever begin
@@ -4747,7 +4692,7 @@ endtask
 
 使用信箱实现对象的交换,Generator类
 
-```SystemVerilog
+```systemverilog
 class Generator;
     Transaction tr;
     mailbox mbx;
@@ -4768,7 +4713,7 @@ endclass
 
 使用信箱实现对象的交换:Driver类
 
-```SystemVerilog
+```systemverilog
 class Driver;
     Transaction tr;
     mailbox mbx;
@@ -4788,7 +4733,7 @@ endclass
 
 测试平台程序块
 
-```SystemVerilog
+```systemverilog
 program automatic mailbox_example(bus_if.TB bus,...);
     'include "transaction.sv"
     'include "generator.sv"
@@ -4817,7 +4762,7 @@ endprogram
 
 当往信箱里放入多于设定容量的物品,则put会阻塞,直到你从邮箱里搬走物品腾出空间
 
-```SystemVerilog
+```systemverilog
 `timescale 1ns/1ns
 
 program automatic bounded;
@@ -4866,7 +4811,7 @@ program automatic synch_peek;
                 $display("Producer: after put(%0d)", i);
             end
         endtask
-    endclass : Producer
+    endclass Producer
 
     class Consumer;
         task run();
@@ -4877,7 +4822,7 @@ program automatic synch_peek;
                 mbx.get(i);              // 从 mbx 里移出
             end
         endtask
-    endclass : Consumer
+    endclass Consumer
 
     Producer p;
     Consumer c;
@@ -4942,7 +4887,7 @@ program automatic mbx_evt;
                 $display("Producer: after put(%0d)", i);
             end
         endtask
-    endclass : Producer
+    endclass Producer
 
     // 下接例 7.44
     // 例 7.44 用事件实现同步的生产方和消费方, 接上例
@@ -4955,7 +4900,7 @@ program automatic mbx_evt;
                 -> handshake;
             end
         endtask
-    endclass : Consumer
+    endclass Consumer
 
     Producer p;
     Consumer c;
@@ -5047,13 +4992,13 @@ class Config;
     bit [31:0] run_for_n_trans;
     constraint reasonable
     {
-        fun_for_n_trans inside [1:1000];
+        run_for_n_trans inside [1:1000];
     }
 endclass
 ```
 环境类
 
-```systemVerilog
+```systemverilog
 class Environment;
 
     Generator gen;
@@ -5214,7 +5159,7 @@ class Driver;
 
 简单的发生器类
 测试平台的发生器创建一个随机的事务,然后将其放入邮箱传递给驱动器
-```SystemVerilog
+```systemverilog
 class Generator;
     mailbox gen2drv;
     Transaction tr;
@@ -5263,7 +5208,7 @@ environment类
 
 执行的三个阶段:创建build,运行run和收尾wrap-up
 
-```SystemVerilog
+```systemverilog
 class Environment;
     Generator gen;
     Driver drv;
@@ -5292,7 +5237,7 @@ endclass
 
 基本的测试仅仅使envrionment类按默认方式运行
 
-```SystemVerilog
+```systemverilog
 program automatic test;
     Environment env;
     initial begin
@@ -5306,7 +5251,7 @@ endprogram
 
 使用扩展的Transaction类
 
-```SystemVerilog
+```systemverilog
 program automatic test;
     Environment env;
     initial begin
@@ -5327,7 +5272,7 @@ endprogram
 
 使用继承来增加一个约束
 
-```SystemVerilog
+```systemverilog
 class Nearby extends Transaction;
     constraint c_nearby{
         dst_inside{[src-100:src+100]};
@@ -5355,7 +5300,7 @@ endprogram
 
 使用$cast作类型向下转换
 
-```SystemVerilog
+```systemverilog
 // 例 8.11 基类和派生类
 class Transaction;
     rand bit [31:0] src;
@@ -5413,7 +5358,7 @@ class Transaction;
     virtual function void calc_crc(); // 异或所有的域
         crc = src ^ dst ^ data.xor;
     endfunction
-endclass : Transaction
+endclass
 
 class BadTr extends Transaction;
     rand bit bad_crc;
@@ -5422,7 +5367,7 @@ class BadTr extends Transaction;
         super.calc_crc();       // 计算正确的 CRC
         if (bad_crc) crc = ~crc; // 产生错误的 CRC 位
     endfunction
-endclass : BadTr
+endclass
 
 Transaction tr;
 BadTr bad;
@@ -5454,7 +5399,7 @@ end
 
 创建一个不分层的以太帧类
 
-```SystemVerilog
+```systemverilog
 class eth_mac_frame;
     typedef enum {II, IEEE} kind_e;
     rand kind_e kind;
@@ -5480,7 +5425,7 @@ endclass
 
 ### 对象的复制
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     rand bit [31:0] src, dst, data[8]; // 变量
     bit [31:0] crc;
@@ -5507,12 +5452,12 @@ class BadTr extends Transaction;
         bad.bad_crc = bad_crc;
         return bad;
     endfunction
-endclass : BadTr
+endclass
 ```
 
 copy_data方法
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     rand bit [31:0] src, dst, data[8];   // 变量
     bit [31:0] crc;
@@ -5533,7 +5478,7 @@ class Transaction;
 endclass
 ```
 
-```SystemVerilog
+```systemverilog
 class BadTr extends Transaction;
     rand bit bad_crc;
 
@@ -5551,14 +5496,14 @@ class BadTr extends Transaction;
         copy_data(bad);                 // 复制数据域
         return bad;
     endfunction
-endclass : BadTr
+endclass
 ```
 
 指定复制的目标
 
 使用copy函数的事务基类
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     virtual function Transaction copy(Transaction to=null);
         if(to == null) copy = new();
@@ -5570,7 +5515,7 @@ endclass
 
 含有新copy函数的扩展事务类
 
-```SystemVerilog
+```systemverilog
 class BadTr;
     virtual function Transaction copy(Transaction to=null);
         BadTr bad;
@@ -5579,12 +5524,12 @@ class BadTr;
         copy_data(bad);
         return bad;
     endfunction
-endclass : BadTr
+endclass
 ```
 
 ### 抽象类和纯虚方法
 
-```SystemVerilog
+```systemverilog
 virtual class BaseTr;
     static int count;
     int id;
@@ -5599,7 +5544,7 @@ virtual class BaseTr;
 endclass:BaseTr
 ```
 
-```SystemVerilog
+```systemverilog
 function bit Transaction::compare(input BaseTr to);
     Transaction tr;
     assert ($cast(tr, to));             // 检查 to 是否为正确类型
@@ -5639,7 +5584,7 @@ endfunction : new
 
 一个回调任务应该在顶层测试中创建,在环境中的最低级即驱动器中调用,驱动器无须知道关于测试的任何信息——它只需要使用一个可以在测试中扩展的通用类，驱动器使用一个队列来保存回调对象,这样就可以增加多个对象,回调基类是一个抽象类,使用前必须进行扩展
 
-```SystemVerilog
+```systemverilog
 virtual class Driver cbs; //驱动器回调
    virtual task pre_tx(ref Transaction tr,ref bit drop);
    //默认情况下回调不做任何动作
@@ -5651,7 +5596,7 @@ virtual class Driver cbs; //驱动器回调
 endclass
 ```
 
-```SystemVerilog
+```systemverilog
 class Driver;
     Driver_cbs cbs[$];
 
@@ -5724,7 +5669,7 @@ endprogram
 
 用于原子事务的简单计分板
 
-```SystemVerilog
+```systemverilog
 class Scoreboard;
     Transaction scb[$] //保存期望的事务的队列
 
@@ -5742,7 +5687,7 @@ class Scoreboard;
         default : $display("Multiple transactions found");
         endcase
         endfunction:compare_actual
-    endclass:Scoreboard
+    endclass
 ```
 
 这段代码展示了 SystemVerilog 验证环境中一种高级的解耦设计模式：**利用回调（Callback）机制将记分板（Scoreboard）与驱动器（Driver）连接起来**。
@@ -5842,7 +5787,7 @@ class IntStack;
     function int pop();                // 从顶端出栈
         return stack[top--];
     endfunction
-endclass : IntStack
+endclass IntStack
 ```
 
 
@@ -5860,7 +5805,7 @@ class Stack #(type T=int);
     function T pop();                  // 从顶部出栈
         return stack[top--];
     endfunction
-endclass : Stack
+endclass Stack
 ```
 
 
@@ -5886,7 +5831,7 @@ Stack #(string) str_stack = new();
 
 使用参数化的堆栈类
 
-```SystemVerilog
+```systemverilog
 initial begin
     Stack #(real) rStack; //创建一个用于实数类型的堆栈
     rStack = new();
@@ -5928,10 +5873,10 @@ flowchart TD
     Spec ==> Plan
     Spec ==> Design
     Plan ==> TestSet
-    
+
     Design ==> DB
     TestSet ==> DB
-    
+
     DB ==> Decision
 
     %% 循环回路（否 -> 调试 -> 设计）
@@ -5956,7 +5901,7 @@ flowchart TD
 
 ### 功能覆盖率简单例子
 
-```SystemVerilog
+```systemverilog
 program automatic test(busifc.TB ifc);
     class Transaction;
         rand bit[31:0] data;
@@ -6022,7 +5967,7 @@ Automatically Generated Bins
 
 类里的功能覆盖率
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     Transaction tr;
     mailbox mbx_in;
@@ -6057,7 +6002,7 @@ class Transaction;
 
 使用回调函数进行采样
 
-```SystemVerilog
+```systemverilog
 program automatic test;
     Environment env;
 
@@ -6177,7 +6122,7 @@ endprogram
 
 覆盖组选项auto_bin_max指明了自动创建仓的最大数目,缺省值是64,如果覆盖点变量或表达式的值域超过指定的最大值,SystemVerilog会把值域范围平均分配给auto_bin_max个仓,例如一个16比特变量有65536个可能值,所以64个bin中的每一个都覆盖了1024个值
 
-```SystemVerilog
+```systemverilog
 covergroup CovPort;
     coverpoint tr.port
     {
@@ -6188,7 +6133,7 @@ endgroup
 
 在所有覆盖点中使用auto_bin_max
 
-```SystemVerilog
+```systemverilog
 covergroup CovPort;
     options.auto_bin_max = 2; //影响port和data
     coverpoint tr.port;
@@ -6198,7 +6143,7 @@ endgroup
 
 对表达式进行采样
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     rand bit[2:0] hdr_len; //范围： 0:7
     rand bit[3:0] payload_len; //范围： 0:15
@@ -6215,7 +6160,7 @@ endgroup
 
 使用用户自定义的仓发现漏洞
 
-```SystemVerilog
+```systemverilog
 covergroup CovLen;
     len:coverpoint(tr.hdr_len + tr.payload_len + 5'b0)
     {bins len[]= {[0:23]};}
@@ -6226,7 +6171,7 @@ endgroup
 
 指定仓名:
 
-```SystemVerilog
+```systemverilog
 covergroup CovKind;
     coverpoint tr.kind {
         bins zero = {0};            // 1个仓代表 kind==0
@@ -6243,7 +6188,7 @@ endgroup // CoverKind
 使用关键字iff给覆盖点添加条件
 条件覆盖:复位期间禁止
 
-```SystemVerilog
+```systemverilog
 covergroup CoverPort;
 // 当reset == 1 时不收集覆盖率数据
     coverpoint port iff(!bus_if.reset);
@@ -6252,7 +6197,7 @@ endgroup
 
 使用start和stop函数
 
-```SystemVerilog
+```systemverilog
 initial begin
     CovPort ck = new(); //实例化覆盖组
     // 复位期间停止收集覆盖率数据
@@ -6267,7 +6212,7 @@ end
 翻转覆盖率
 
 查询port有没有从0变成1，2或3
-```SystemVerilog
+```systemverilog
 covergroup CoverPort;
     coverpoint port{
         bins t1 = (0 => 1, 0 => 2, 0 => 3);
@@ -6277,7 +6222,7 @@ endgroup
 
 用在覆盖点仓中的通配符
 
-```SystemVerilog
+```systemverilog
 bit [2:0] port;
 covergroup CoverPort;
     coverpoint port{
@@ -6291,7 +6236,7 @@ endgroup
 
 使用ignore_bins覆盖点
 
-```SystemVerilog
+```systemverilog
 bit[2:0] low_ports_0_5; //只使用数值0-5
 covergroup CoverPort;
     coverpoint low_ports_0_5{
@@ -6312,7 +6257,7 @@ endgroup
 
 
 不合法的仓
-```SystemVerilog
+```systemverilog
 bit [2:0] low_ports_0_5; //只使用数值0-5 //只使用数值0-5
 covergroup CoverPort;
     coverpoint low_ports_0_5{
@@ -6323,7 +6268,7 @@ endgroup
 
 ### 交叉覆盖率
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     rand bit[3:0] kind;
     rand bit[2:0] port;
@@ -6342,7 +6287,7 @@ endgroup
 
 对交叉覆盖仓进行标号
 
-```SystemVerilog
+```systemverilog
 covergroup CovPortKind;
     port:coverpoint tr.port
     {
@@ -6361,7 +6306,7 @@ endgroup
 
 排除掉部分交叉覆盖仓
 
-```SystemVerilog
+```systemverilog
 covergroup Covport;
     port:coverpoint tr.port
     {
@@ -6457,7 +6402,7 @@ $$ \text{Total Coverage} = \frac{\sum (\text{每个点的命中仓数})}{\sum (\
 
 使用仓名来收集交叉覆盖率数据
 
-```SystemVerilog
+```systemverilog
 class Transaction;
   rand bit a,b;
 endclass
@@ -6486,7 +6431,7 @@ covergroup CrossBinNames;
 endgroup
 ```
 
-```SystemVerilog
+```systemverilog
 // 例 9.36 使用 binsof 的交叉覆盖率
 class Transaction;
     rand bit a, b;
@@ -6521,7 +6466,7 @@ endgroup
 
 使用串联值替代交叉覆盖
 
-```SystemVerilog
+```systemverilog
 covergroup CrossManual；
     ab:coverpoint{tr.a,tr.b}
     {bins a0b0 = {0,0};
@@ -6532,7 +6477,7 @@ endgroup
 
 使用串联值来替代交叉覆盖
 
-```SystemVerilog
+```systemverilog
 covergroup CrossManual;
     ab:coverpoint{tr.a,tr.b}
     {bins a0b0 = {2'b 00};
@@ -6546,7 +6491,7 @@ endgroup
 
 通过数值传递覆盖组参数
 
-```SystemVerilog
+```systemverilog
 bit [2:0] port；
 covergroup CoverPort(int mid);
     coverpoint port
@@ -6563,7 +6508,7 @@ initial
 
 通过引用传递覆盖参数
 
-```SystemVerilog
+```systemverilog
 // 例 9.39 通过引用传递
 bit [2:0] port_a, port_b;
 
@@ -6595,7 +6540,7 @@ end
 
 指定单个实例的覆盖率
 
-```SystemVerilog
+```systemverilog
 covergroup CoverLength;
     coverpoint tr.length;
     option.per_instance = 1;
@@ -6611,7 +6556,7 @@ endgroup
 
 覆盖组的注释
 
-```SystemVerilog
+```systemverilog
 covergroup CoverPort;
     type_option.comment = "Section 9.40";
     coverpoint port;
@@ -6620,7 +6565,7 @@ endgroup
 
 为单个覆盖组实例指定注释
 
-```SystemVerilog
+```systemverilog
  Covergroup CoverPort(int lo,hi,string comment);
     option.comment = comment;
     option.per_instance = 1;
@@ -6645,7 +6590,7 @@ option.at_least 如果定义在覆盖组里,那么它就会作用于所有的覆
 
 报告所有的仓,包括空仓
 
-```SystemVerilog
+```systemverilog
 covergroup CovPort;
     kind:coverpoint tr.kind;
     port:coverpoint tr.port
@@ -6658,7 +6603,7 @@ endgroup
 
 一个覆盖组或覆盖点的目标是达到该点被认为已经完全覆盖的水平,缺省情况是百分百的覆盖,但可以设置为低于100%
 
-```SystemVerilog
+```systemverilog
 covergroup CovPort;
   coverpoint port;
   option.goal = 90; // 目标是90%覆盖率
@@ -6669,7 +6614,7 @@ endpoint
 
 如果覆盖点只有一个采样值甚至没有,那么你的约束可能根本就没有定位在预期的区域上
 
-```SystemVerilog
+```systemverilog
 class Transaction;
     rand bit [2:0] hdr_len;
     rand bit [3:0] payload_len;
@@ -6680,7 +6625,7 @@ endclass
 
 对事务长度使用solve...before约束
 
-```SystemVerilog
+```systemverilog
 constraint length{len == hdr_len + payload_len;
     solve hdr_len before hdr_len,payload_len;}
 ```
@@ -6710,7 +6655,7 @@ solve...before约束通常的替代选择是dist约束
 
 只含有物理接口的测试平台
 
-```SystemVerilog
+```systemverilog
 //带有modport和时钟块的Rx接口
 interface Rx_if(input logic clk);
     logic [7:0] data;
@@ -6727,7 +6672,7 @@ interface Rx_if(input logic clk);
 endinterface: Rx_if
 ```
 
-```SystemVerilog
+```systemverilog
 //带有时钟块的TX接口
 interface Tx_if(input logic clk);
     logic [7:0] data;
@@ -6821,7 +6766,7 @@ Rx0.cb.data <= 0;     // 初始化接收接口数据
 
 含有接口数组的顶层模块
 
-```SystemVerilog
+```systemverilog
 module top;
     logic clk,rst;
 
@@ -6840,7 +6785,7 @@ module top;
 ```
 
 使用虚拟接口的驱动类
-```SystemVerilog
+```systemverilog
 class Driver;
     int stream_id;
     bit done = 0;
@@ -6855,7 +6800,7 @@ class Driver;
 
     task run(input int ncells ,input event driver_done);
         ATM_Cell ac;
-        
+    
         fork //将此任务派生为一个独立的线程
         begin
             //初始化输出信号
@@ -6920,7 +6865,7 @@ endclass: Driver
 
 将测试平台链接到端口列表中的接口
 
-```SystemVerilog
+```systemverilog
 module top;
     bus_ifc bus(); //例化接口
     test t1(bus);  //通过端口列表传递给测试程序
@@ -6929,14 +6874,15 @@ endmodule:top
 
 ```
 
-````SystemVerilog
+```systemverilog
 program automatic test(bus_ifc bus);
     initial $display(bus.data);
 endprogram
+```
 
 端口列表中含有第二个接口的顶层模块
 
-```SystemVerilog
+```systemverilog
 module top;
     bus_ifc bus(); //例化接口
     new_ifc newb(); //再例化一个接口
@@ -6947,7 +6893,7 @@ endmodule
 
 使用XMR(跨模块引用)连接接口和测试程序
 
-```SystemVerilog
+```systemverilog
 //- 使用虚接口和XMR的测试程序
 program automatic test();
     virtual bus_ifc bus= top.bus; //跨模块引用
@@ -6959,7 +6905,7 @@ endprogram
 
 8位计数器的接口
 
-```SystemVerilog
+```systemverilog
 interface X_if(input logic clk);
     logic[7:0] din,dout;
     logic reset_l,load;
@@ -6978,7 +6924,7 @@ endinterface
 
 使用X_if接口的计数器模型
 
-```SystemVerilog
+```systemverilog
 module dut(X_if.DUT xi);
     logic[7:0] count;
     assign xi.dout = count;
@@ -6997,7 +6943,8 @@ endmodule
 
 使用虚拟接口数组的测试平台
 
-```parameter NUM_XI = 2; // 设计实例的个数
+```systemverilog
+parameter NUM_XI = 2; // 设计实例的个数
 parameter NUM_XI = 2;
 
 module top;
@@ -7027,7 +6974,7 @@ endmodule
 
 使用虚拟接口的计数器测试平台
 
-```SystemVerilog
+```systemverilog
 // 例 10.19 使用虚接口的计数器测试平台
 program automatic test;
 
@@ -7064,7 +7011,7 @@ endprogram
 
 使用虚接口的Driver类
 
-```SystemVerilog
+```systemverilog
 // 例 10.20 使用虚接口的 Driver 类
 class Driver;
     virtual X_if xi; // 声明虚接口句柄
@@ -7103,12 +7050,12 @@ class Driver;
         $display("@%0t:%m:End load[%0d]", $time, id);
     endtask : load_op
 
-endclass : Driver
+endclass Driver
 ```
 
 对虚接口使用typedef
 
-```SystemVerilog
+```systemverilog
 typedef virtual x_if.TB vx_if;
 
 program automatic test；
@@ -7121,7 +7068,7 @@ endprogram
 
 使用端口传递虚接口的测试平台
 
-```SystemVerilog
+```systemverilog
 parameter NUM_XI = 2; //实例个数
 
 module top;
@@ -7136,7 +7083,7 @@ endmodule
 
 使用端口传递虚接口测试平台
 
-```SystemVerilog
+```systemverilog
 // 例 10.21 使用端口传递虚接口的测试平台
 Driver driver[];              // 声明 Driver 动态数组
 virtual X_if vxi[NUM_XI];     // 声明虚接口数组
@@ -7161,7 +7108,7 @@ endprogram
 
 并行协议接口
 
-```SystemVerilog
+```systemverilog
 interface simple_if(input logic clk);
     // 1. 信号定义
     logic [7:0] addr;
@@ -7196,12 +7143,12 @@ interface simple_if(input logic clk);
         c = cmd;            // 阻塞赋值采样命令
     endtask
 
-endinterface : simple_if
+endinterface simple_if
 ```
 
 串行接口代码
 
-```SystemVerilog
+```systemverilog
 // 例 10.26 含有使用串行协议任务的接口
 interface simple_if(input logic clk);
     logic addr;
@@ -7226,14 +7173,14 @@ interface simple_if(input logic clk);
         @(posedge clk);       // 等待时钟上升沿
         start <= 1;           // 拉高 Start 信号，开始传输
         cmd <= c;             // 发送命令
-        
+    
         // 循环遍历数组进行串行发送
         foreach(a[i]) begin
             addr <= a[i];     // 发送地址位
             data <= d[i];     // 发送数据位
             @(posedge clk);   // 等待下一个时钟沿（串行传输的核心）
         end
-        
+    
         start <= 0;           // 拉低 Start 信号，结束传输
         cmd <= IDLE;          // 命令恢复空闲状态
     endtask
@@ -7242,7 +7189,7 @@ interface simple_if(input logic clk);
     task targetRcv(output bus_cmd_e c, logic [7:0] a, d);
         @(posedge start);     // 等待 Start 信号变高（检测传输开始）
         c = cmd;              // 采样命令
-        
+    
         // 循环遍历数组进行串行接收
         foreach(a[i]) begin
             @(posedge clk);   // 等待时钟沿以同步采样
@@ -7251,7 +7198,7 @@ interface simple_if(input logic clk);
         end
     endtask
 
-endinterface : simple_if
+endinterface simple_if
 ```
 
 发送端 (initiatorSend)：
@@ -7305,7 +7252,7 @@ module top;
     // Testbench 实例化
     test #(NumRx, NumTx) t1(Rx, Tx, mif, rst, clk);
 
-endmodule : top
+endmodule top
 ```
 
 测试平台程序
@@ -7340,7 +7287,7 @@ endprogram // test
 
 CPU管理接口
 
-```SystemVerilog
+```systemverilog
 
 interface cpu_ifc;
 
@@ -7352,13 +7299,13 @@ interface cpu_ifc;
 
     modport Test(output BusMode,Addr,Sel,DataIn,Bd_Ds,Wr_RW,input DataOut,Rdy_Dtack);
 
-    endinterface : cpu_ifc
+    endinterface cpu_ifc
     typedef virtual cpu_ifc.Test vCPU_T;
 ```
 
 Utopia接口与待测设计squat进行通信，发送和接收ATM信元
 
-```SystemVerilog
+```systemverilog
 interface Utopia;
     parameter int IfWidth = 8;
 
@@ -7419,7 +7366,7 @@ typedef virtual Utopia.TB_Tx vUtopiaTx;
 ```
 
 测试平台的模块environment
-```SystemVerilog
+```systemverilog
 // 例 11.5 Environment 类的首部
 class Environment;
 
@@ -7458,14 +7405,14 @@ class Environment;
     extern virtual task run();                // 运行仿真（启动各组件）
     extern virtual task wrap_up();            // 结束处理（检查结果、打印报告）
 
-endclass : Environment
+endclass Environment
 ```
 
 Environment类的方法
 
 //构造Environment类的方法
 
-```SystemVerilog
+```systemverilog
 
 // --------------------------------------------------
 // 构造 environment 实例
@@ -7584,7 +7531,7 @@ task Environment::run();
         wait (num_gen_running == 0);
         begin
             repeat (1_000_000) @(Rx[0].cbr);
-            $display("%@%0t: %m ERROR: Generator timeout ", $time);
+            $display("%0t: %m ERROR: Generator timeout ", $time);
             cfg.nErrors++;
         end
     join_any
@@ -7597,7 +7544,7 @@ endtask : run
 // --------------------------------------------------
 // 运行结束后的清除/报告工作
 function void Environment::wrap_up();
-    $display( "%@%0t: End of sim, %0d errors, %0d warnings",
+    $display( "%0t: End of sim, %0d errors, %0d warnings",
               $time, cfg.nErrors, cfg.nWarnings);
 
     scb.wrap_up;
@@ -7646,7 +7593,7 @@ task Environment::run();
         wait (num_gen_running == 0);
         begin
             repeat (1_000_000) @(Rx[0].cbr);
-            $display("%@%0t: %m ERROR: Generator timeout ", $time);
+            $display("%0t: %m ERROR: Generator timeout ", $time);
             cfg.nErrors++;
         end
     join_any
@@ -7659,7 +7606,7 @@ endtask : run
 // --------------------------------------------------
 // 运行结束后的清除/报告工作
 function void Environment::wrap_up();
-    $display( "%@%0t: End of sim, %0d errors, %0d warnings",
+    $display( "%0t: End of sim, %0d errors, %0d warnings",
               $time, cfg.nErrors, cfg.nWarnings);
 
     scb.wrap_up;
@@ -7692,7 +7639,7 @@ endfunction : wrap_up
 
 回调类连接了驱动器和计分板
 
-```SystemVerilog
+```systemverilog
 class Scb_Driver_cbs extends Driver_cbs;
     Scoreboard scb;
 
@@ -7705,13 +7652,13 @@ class Scb_Driver_cbs extends Driver_cbs;
     input UNI_cell cell);
         scb.save_expected(cell);
     endtask : post_tx
-endclass : Scb_Driver_cbs
+endclass Scb_Driver_cbs
 
 ```
 
 回调类连接了监视器和计分板
 
-```SystemVerilog
+```systemverilog
 class Scb_Monitor_cbs extends Monitor_cbs;
 
     Scoreboard scb;
@@ -7723,11 +7670,11 @@ class Scb_Monitor_cbs extends Monitor_cbs;
     virtual task post_rx(input Monitor mon,input NNI_cell cell);
          scb.check_actual(cell,mon,PortID);
         endtask : post_rx
-    endclass : Scb_Monitor_cbs
+    endclass Scb_Monitor_cbs
 ```
     environment通过Cov_Monitor_cbs回调类连接了监视器和覆盖率类
 
-```SystemVerilog
+```systemverilog
 class Cov_Monitor_cbs extends Monitor_cbs;
     Coverage cov;
 
@@ -7743,10 +7690,10 @@ class Cov_Monitor_cbs extends Monitor_cbs;
         cov.sample(mon.PortID, CellCfg.FWD);
     endtask : post_rx
 
-endclass : Cov_Monitor_cbs
+endclass Cov_Monitor_cbs
 ```
 
-```SystemVerilog
+```systemverilog
 class Config;
     // 错误和警告的个数
     int nErrors, nWarnings;
@@ -7797,7 +7744,7 @@ class Config;
 
     extern function new(input bit [31:0] numRx, numTx);
     extern virtual function void display(input string prefix="");
-endclass : Config
+endclass Config
 ```
 
 总量控制 (nCells)
@@ -7816,7 +7763,7 @@ endclass : Config
 
 信元配置类型
 
-```SystemVerilog
+```systemverilog
 typedef struct packed{
     bit ['TxPorts-1:0] FWD;
     bit [11:0] VPI;
@@ -7847,7 +7794,7 @@ ATM交换机接收UNI格式的信元,发送NNI格式的信元
 
 UNI信元格式
 
-```SystemVerilog
+```systemverilog
 typedef struct packed{
     bit    [3:0]   GFC;
     bit    [7:0]   VPI;
@@ -7862,7 +7809,7 @@ typedef struct packed{
 
 NNI信元格式
 
-```SystemVerilog
+```systemverilog
 
 typedef struct packed{
     bit [11:0] VPI;
@@ -7875,7 +7822,7 @@ typedef struct packed{
 ```
 ATM信元类型
 
-```SystemVerilog
+```systemverilog
 typedef struct packed{
     uniType uni;
     nniType nni;
@@ -7885,7 +7832,7 @@ typedef struct packed{
 
 UNI_cell扩展定义的BaseTr类
 
-```SystemVerilog
+```systemverilog
 class UNI_cell extends BaseTr;
     // 物理域
     rand bit        [3:0]   GFC;
@@ -7912,7 +7859,7 @@ class UNI_cell extends BaseTr;
     extern function void generate_syndrome();
 
     extern function bit [7:0] hec (bit [31:0] hdr);
-endclass : UNI_cell
+endclass UNI_cell
 
 function UNI_cell::new();
     if(syndrome_not_generated)
@@ -7948,7 +7895,7 @@ function void UNI_cell::copy_data(input string prefix);
 endfunction : display
 
 //复制信元的数据域
-funcition void UNI_cell::copy_data(input UNI_cell copy);
+function void UNI_cell::copy_data(input UNI_cell copy);
     GFC = copy.GFC;
     VPI = copy.VPI;
     VCI = copy.VCI;
@@ -8033,7 +7980,7 @@ function void UNI_cell::generate_syndrome();
 
 UNI信元的随机发生器,产生一个UNI类型的blueprint随机信元，然后把它的副本发送给driver
 
-```SystemVerilog
+```systemverilog
 class UNI_cell_gen extends Generator;
    UNI_cell blueprint; //BluePrint信元
    mailbox gen2drv; //driver的Mailbox
@@ -8061,12 +8008,12 @@ class UNI_cell_gen extends Generator;
             @drv2gen; //等待driver完成
         end
     endtask : run
-endclass : UNI_generator
+endclass UNI_generator
 ```
 
 Driver类把UNI信元发送到ATM交换机，Driver类使用了回调任务
 
-```SystemVerilog
+```systemverilog
 typedef class Driver_cbs;
 
 class Driver;
@@ -8083,7 +8030,7 @@ class Driver;
     extern task run();
     extern task send(input UNI_cell cell);
 
-endclass : Driver
+endclass Driver
 
 //new() 构造driver对象
 //获取发生器的实物,发送给DUT
@@ -8103,7 +8050,7 @@ task Driver::run();
          foreach(cbsg[i]) begin
             cbsq[i].pre_tx(this,cell);
         end
-        
+    
         gen2drv.get(cell); //从mailbox中删除该信元
         ->drv2gen; //通知发生器该信元处理完毕
         end
@@ -8121,7 +8068,7 @@ task Driver::run();
         @(Rx.cbr);
         Rx.cbr.clav<=1;
         for(int i = 0; i <= 52; i++) begin
-          
+      
           //置位信元开始信号,使能信号,发送字节0
           Rx.cbr.soc <= (i == 0);
           Rx.cbr.data<= Pkt.Mem[i];
@@ -8136,7 +8083,7 @@ task Driver::run();
 
 Driver回调类分别在信元发送前和发送后调用回调任务
 
-```SystemVerilog
+```systemverilog
 typedef class Driver;
 
 class Driver_cbs;
@@ -8148,12 +8095,12 @@ class Driver_cbs;
     virtual task post_tx(input Driver drv,
                         input UNI_cell cell);
     endtask : post_tx
-endclass : Driver_cbs
+endclass Driver_cbs
 ```
 
 Monitor回调类
 
-```SystemVerilog
+```systemverilog
 typedef class Monitor_cbs;
 
 class Monitor;
@@ -8164,7 +8111,7 @@ class Monitor;
     extern function new(input vUtopiaTx Tx,input int PortID);
     extern task run();
     extern task receive(output NNI_cell cell);
-endclass:Monitor
+endclass
 
 //new 构造对象
 function Monitor::new(input vUtopiaTx Tx,input int PortID);
@@ -8181,7 +8128,7 @@ task Monitor::run();
         foreach(cbsq[i])
             cbsq[i].post_rx(this,cell); //接收信元后的回调
         end
-    endtask::run
+    endtask
 
     //receive()： 从DUT读取信号,打包成NNI各式的信元
     task Monitor::receive(output NNI_cell cell);
@@ -8209,11 +8156,11 @@ task Monitor::run();
 
 计分板scoreboard类
 
-```SystemVerilog
+```systemverilog
 class Expect_cells;
     NNI_cell q[$];
     int iexpect,iactual;
-endclass : Expect_cells
+endclass Expect_cells
 
 class Scoreboard;
     Config cfg;
@@ -8227,7 +8174,7 @@ class Scoreboard;
     extern function void check_actual(input NNI_cell cell,input int portn);
     extern function void display(input string prefix="");
 
-endclass : Scoreboard
+endclass Scoreboard
 
 function Scoreboard::new(Config cfg);
     this.cfg = cfg;
@@ -8308,7 +8255,7 @@ endfunction : display
 功能覆盖类
 
 
-```SystemVerilog
+```systemverilog
 class Coverage;
     bit [1:0] src;
     bit [NumTx-1:0] fwd;
@@ -8337,12 +8284,12 @@ this.src = src;
 this.fwd = fwd;
 CG_Forward.sample();
 endfunction : sample
-endclass : Coverage
+endclass Coverage
 ```
 
 cpu driver类
 
-```SystemVerilog
+```systemverilog
 class CPU_driver;
     vCPU_T mif;
     CellCfgType lookup[255:0]; //复制一份查找表
@@ -8354,7 +8301,7 @@ class CPU_driver;
     extern task HostWrite(int a,CellCfgType d); //配置
     extern task HostRead(int a,output CellCfgType d);
     extern task run();
-endclass : CPU_driver
+endclass CPU_driver
 
 function CPU_driver::Initialize_Host();
 
@@ -8380,7 +8327,7 @@ task CPU_driver::HostRead (int a, output CellCfgType d);
     #10 mif.Rd_DS<=0;
     while (mif.Rdy_Dtack!==0) #10;
     #10 d=mif.DataOut; mif.Rd_DS<=1; mif.Sel<=1;
-    
+
     // Alternate Tests 377 (注：此处为书页眉/页脚文字，非代码)
     while (mif.Rdy_Dtack==0) #10;
 endtask : HostRead
@@ -8427,7 +8374,7 @@ endtask:run
 
 只有一个信元的测试
 
-```SystemVerilog
+```systemverilog
 program automatic test
     #(parameter int NumRx = 4,parameter int NumTx = 4)
     (Utopia.TB_Rx Rx[0:NumRx-1],
@@ -8443,14 +8390,14 @@ program automatic test
         function new(input int NumRx,NumTx);
             super.new(NumRx,NumTx);
         endfunction : new
-    endclass : Config_1_cells
+    endclass Config_1_cells
 
     initial begin
         env = new(Rx,Tx,NumRx,NumTx,mif);
 
         begin //仅仿真一个信元
             Config_1_cell cfg1 = new(NumRx,NumTx);
-            env，cfg = c1;
+            env.cfg = c1;
         end
 
         env.gen_cfg(); //配置成只有一个信元
@@ -8458,12 +8405,12 @@ program automatic test
         env.run();
         env.wrap_up();
     end
-endprogram //test
+endprogram
 ```
 
 随机丢弃信元
 
-```SystemVerilog
+```systemverilog
 program automatic test
     #(parameter int NumRx = 4,parameter int NumTx = 4)
     (Utopia.TB_Rx Rx[0:NumRx-1],
@@ -8494,14 +8441,14 @@ program automatic test
         env.run();
         env.wrap_up();
         end
-    endprogram //test
+    endprogram
 ```
 
 ## SystemVerilog与C语言的接口
 
 SystemVerilog代码调用C语言子程序factorial
 
-```SystemVerilog
+```systemverilog
 import "DPI-C" function int factorial(input int i);
 
 program automatic test;
@@ -8518,7 +8465,7 @@ import 声明定义了C任务和函数的原型,但使用的是SystemVerilog的�
 
 void 类型的C函数会被映射成一个SystemVerilog任务或者void函数
 
-```SystemVerilog
+```systemverilog
 program automatic test;
 
     // 改变 C 函数名"test"为"my_test"
@@ -8539,7 +8486,7 @@ endprogram
 
 参数方向
 
-```SystemVerilog
+```systemverilog
 import "DPI-C" function int addmul(input int a,b, output int sum);
 import "DPI-C" function void stop_model();
 ```
@@ -8593,7 +8540,7 @@ void counter7(c7 * inst,svBitVecVal * count,const svBitVecVal * i,const svBit re
 
 ```
 
-```SystemVerilog
+```systemverilog
 import "DPI-C" function chandle counter7_new();
 import "DPI-C" function void counter7
     (input chandle inst,
@@ -8681,7 +8628,7 @@ void counter7(c7 * inst,
 ```
 
 
-```SystemVerilog
+```systemverilog
 // 例 12.11 检查 Z 和 X 值的计数器测试平台
 
 import "DPI-C" function chandle counter7_new();
@@ -8811,7 +8758,7 @@ int counter7_get(void* inst) {
 
 使用cpp 模型方法的测试平台
 
-```SystemVerilog
+```systemverilog
 // 例 12.17 使用方法的 C++ 模型的测试平台
 
 import "DPI-C" function chandle counter7_new();
@@ -8844,12 +8791,12 @@ class Counter7;
     function bit [6:0] get();
         return counter7_get(inst);
     endfunction
-endclass : Counter7
+endclass Counter7
 ```
 
 使用cpp模型的测试平台
 
-```SystemVerilog
+```systemverilog
 program automatic counter;
     Counter7 c1;
     initial begin
@@ -8873,7 +8820,7 @@ endprogram
 
 一维数组  : 双状态
 
-```SystemVerilog
+```systemverilog
 void fib(svBitVecVal data[20]){
     int i;
     data[0] = 1;
@@ -8899,7 +8846,7 @@ endprogram
 
 一维数组4状态
 
-```SystemVerilog
+```systemverilog
 void fib(svLogicVecVal data[20]){
     int i;
     data[0].aval = 1;
@@ -8915,7 +8862,7 @@ void fib(svLogicVecVal data[20]){
 
 带4状态 数组的斐波那契C子程序的测试平台
 
-```SystemVerilog
+```systemverilog
 import "DPI-C" function void fib(output logic [31:0] data[20]);
 
 program automatic test;
@@ -8923,14 +8870,14 @@ program automatic test;
 
     initial begin
         fib(data);
-        foreach(datap[i]) $display(i,data[i]);
+        foreach(data[i]) $display(i,data[i]);
     end
 endprogram
 ```
 
 ### 开放数组
 
-```SystemVerilog
+```systemverilog
 import "DPI-C" function void open_array(output bit [31:0] data[]);
 
 program automatic test;
@@ -8981,7 +8928,7 @@ void fib_oa(const svOpenArrayHandle data_oa){
 
 传递大小未定义的开放数组
 
-```SystemVerilog
+```systemverilog
 // 例 12.25 调用参数为多维开放数组的 C 函数的测试平台
 import "DPI-C" function void mydisplay(inout int h[][]);
 
@@ -9058,7 +9005,7 @@ program automatic test;
 
         view_pack(bpack);
     end
-endprogram : test
+endprogram
 ```
 
 例 12.28 使用压缩开放数组的 C 代码
@@ -9102,7 +9049,7 @@ void invert(p_rgb rgb) {
 
 SystemVerilog 测试平台使用压缩结构来保存一个简单的像素，使用类来封装对像素的操作。由于结构 RGB_T 是压缩的，所以 SystemVerilog 会以连续的方式来保存其字节。如果没有加上 `packed` 修饰符，每一个 8 位值都会被保存成一个单字。
 
-```SystemVerilog
+```systemverilog
 // 定义打包结构体类型
 typedef struct packed { bit [7:0] r, g, b; } RGB_T;
 
@@ -9131,7 +9078,7 @@ program automatic test;
             g = pstruct.g;
             b = pstruct.b;
         endfunction : unpack
-    endclass : RGB
+    endclass RGB
 
     initial begin
         RGB pixel;
@@ -9154,7 +9101,7 @@ endprogram
 
 在SystemVerilog 和 c之间传递字符串
 
-```SystemVerilog
+```systemverilog
 char * print(p_rgb rgb){
     static char s[12];
     sprintf(s,"C: rgb=%02x,%02x,%02x",rgb->r,rgb->g,rgb->b);
@@ -9166,7 +9113,7 @@ char * print(p_rgb rgb){
 
 下面的代码将字符串保存在一个堆中支持并发调用
 
-```SystemVerilog
+```systemverilog
 #define PRINT_SIZE 12
 #define MAX_CALLS 16
 #define HEAP_SIZE PRINT_SIZE * MAX_CALLS
@@ -9212,7 +9159,7 @@ import "DPI-C" context task call_sv(bit [31:0] data);
 
 在c中与SystemVerilog通信
 
-```SystemVerilog
+```systemverilog
 module block;
     import "DPI-C" context function void c_display();
     export "DPI-C" function sv_display;      // 没有类型定义或者参数
@@ -9222,7 +9169,7 @@ module block;
     function void sv_display();
         $display("SV: block");
     endfunction
-endmodule : block
+endmodule block
 ```
 
 导出一个SystemVerilog任务
@@ -9237,7 +9184,7 @@ void c_display() {
 ```
 
 简单内存模型
-```SystemVerilog
+```systemverilog
 module memory;
     import "DPI-C" function read_file(string fname);
     export "DPI-C" function mem_build; // 没有类型定义或者参数
@@ -9250,7 +9197,7 @@ module memory;
     function mem_build(input int size);
         mem = new[size]; // 分配动态内存元素
     endfunction
-endmodule : memory
+endmodule memory
 ```
 
 ```c
@@ -9279,7 +9226,7 @@ int read_file(char * fname) {
 
 调用SystemVerilog任务的C任务
 
-```SystemVerilog
+```systemverilog
 module memory;
     import "DPI-C" context task read_file(string fname);
     export "DPI-C" task mem_read;
@@ -9301,7 +9248,7 @@ module memory;
     task mem_write(input int addr, input int data);
         #10 mem[addr] = data;
     endtask
-endmodule : memory
+endmodule memory
 ```
 ```c
 extern void mem_read(int, int* );
@@ -9348,7 +9295,7 @@ int read_file(char * fname) {
 
 创建对象中的方法
 
-```SystemVerilog
+```systemverilog
 module memory;
     import "DPI-C" context task read_file(string fname);
     export "DPI-C" task mem_read;
@@ -9371,7 +9318,7 @@ module memory;
         task mem_write(input int addr, input int data);
             #10 mem[addr] = data;
         endtask : mem_write
-    endclass : Memory
+    endclass Memory
 
     Memory memq[$];                     // 内存对象队列
 
@@ -9391,7 +9338,7 @@ module memory;
         memq[idx].mem_write(addr, data);
     endtask
 
-endmodule : memory
+endmodule memory
 ```
 
 c中识别导出的SystemVerilog任务作用域
