@@ -242,9 +242,249 @@ module mult8(
     input start
 );
 
+reg [4:0] multcounter; //counter for number of shift 
+reg [7:0] shiftB; //shift register for B
+reg [7:0] shiftA; //shift register for A
 
+wire adden; //enable addition
+assign adden = shiftB[7] & !done;
+assign done = multcounter[3];
 
+always @(posede clk) begin
+   //increment multiply counter for shift/add ops
+   if(start) multcounter <= 0;
+   else if(!done) multcounter <= multcounter + 1;
+   // shift B
+   if(start) multcounter <= 0;
+   else if(!done) multcounter <= multcounter + 1;
+
+   //shift register for A
+   if(start) shiftA <= A;
+   else shiftA[7:0] <= {shiftA[7],shiftA[7:1]};
+
+   //calculate multiplication
+   if(start) product <= 0;
+   else if(adden) product <= product + shiftA;
+end
+endmodule
+```
+
+### 基于控制的逻辑复用
+
+共享逻辑资源有时需要专门的控制电路来决定哪些元件是到特定结构的输入
+
+每个寄存器总是专用于运行加法器的特定输入
+
+为了确定这个变化,可以要求一个状态机作为附加的输入到逻辑
+
+```verilog
+module lowpassfir(
+    output reg [7:0] filtout,
+    output reg done,
+    input clk,
+    input [7:0] datain,
+    input datavalid,
+    input [7:0] coeffA,coeffB,coeffC
+);
+
+//define input/output samples
+reg   [7:0] X0,X1,X2;
+reg         multdonedelay;
+reg         multstart;
+reg   [7:0] multdat;
+reg   [7:0] multcoeff;
+reg   [2:0] state;
+reg   [7:0] accum;
+wire        multdone;
+wire  [7:0] multout;
+
+// shift-add multiplier for sample-coeff mults
+mult8x8 mult8x8(.clk(clk),.dat1(multdat),.dat2(multcoeff),.start(multstart),.done(multdone),.multout(multout));
+
+always @(posedge clk) begin
+    multdonedelay <= multdone;
+
+    // accumsum <= accum + multout[7:0];
+    if(clearaccum)  accum <= 0;
+    else if(multdonedelay) accum <= accumsum;
+
+    // do not process state machine if multiply is not done
+    case(state)
+        0: begin
+           // idle state
+           if(datavalid) begin
+              // if a new sample has arrived
+              // shift samples
+              X0 <= datain;
+              X1 <= X0;
+              X2 <= X1;
+              multdat <= datain;
+              multcoeff <= coeffA;
+              multstart <= 1;
+              clearaccum <= 1; //clear accum
+              state <= 1;
+            end
+            else begin
+                multstart <= 0;
+                clearaccum <= 0;
+                done <= 0;
+            end
+        end
+
+        1: begin
+            if(multdonedelay) begin
+                // A * X[0] is done,load B* X[1]
+                multdat <= X1;
+                multcoeff <= coeffB;
+                multstart <= 1;
+                state <= 2;
+            end
+            else begin
+                multstart <= 0;
+                clearaccum <= 0;
+                done <= 0;
+            end
+        end
+
+        2: begin
+           if(multdonedelay) begin
+             multdat <= X2;
+             multcoeff <= coeffC;
+             multstart <= 1;
+             state <= 3;
+            end
+            else begin
+                multstart <= 0;
+                clearaccum <= 0;
+                done <= 0;
+            end
+        end
+
+        3: begin
+           if(multdonedelay) begin
+            filtout <= accumsum;
+            done <= 1;
+            state <= 0;
+           end
+           else begin
+                multstart <= 0;
+                clearaccum <= 0;
+                done <= 0;
+            end
+        end
+        default :
+            state <= 0;
+        end
+    endmodule
+```
+
+### 资源共享
+
+资源共享是指不同资源在横跨不同的功能范围内共享
+
+只要有功能块可以在设计的其他部分甚至在不同的模块利用,就可以利用这类资源共享
+
+通常这些计数器可以集中到更高的层次,并分配到多个功能单元
+
+![alt text](sharedResource.png)
+
+### 复位对面积的影响
+
+不正确的复位策略可以产生不必要的大的设计和抑制一些面积优化
+
+1. 无复位的资源
+
+```verilog
+always @(posedge iClk)
+    if(!iReset) sr <= 0;
+    else sr <= {sr[14:0],iDat};
+```
+```verilog
+always @(posedge iClk)
+    sr <= {sr[14:0],iDat};
+```
+
+2. 无置位的资源
+
+```verilog
+module mult8(
+    output reg [15:0] oDat,
+    input  iReset,iClk,
+    input  [7:0] iDat1,iDat2,
+);
+
+always @(posedge iClk)
+    if(!iReset) oDat <= 16'hffff;
+    else oDat <= iDat1 * iDat2;
+endmodule
+```
+
+改变乘法器置位为复位操作,可以减少9个逻辑片和16个片内触发器到单个逻辑片和单个片内触发器
+
+3. 无同步复位的资源
+
+```verilog
+module dspckt(
+    output reg [15:0] oDat,
+    input iReset,iClk,
+    input [7:0] iDat1,iDat2
+);
+
+reg [15:0] multfactor;
+
+always @(posedge iClk or negedge iReset)
+    if(!iReset) begin
+        multfactor <= 0;
+        oDat <= 0;
+    end
+    else begin
+        multfactor <= iDat1 * iDat2;
+        oDat <= multfactor + oDat;
+    end
+endmodule
 ```
 
 
+4. 复位RAM
+
+在许多FPGA内置的RAM资源中有复位的资源,类似于上一节中描述的DSP资源,常常只有同步复位是有效的
+
+复位RAM通常是欠佳的设计实践,特别是当复位还是异步的
+
+```verilog
+module resetckt(
+    output reg [15:0] oDat,
+    input iReset,iClk,iWrEn,
+    input [7:0] iAddr,oAddr,
+    input [15:0] iDat
+);
+
+reg [15:0] memdat [0:255];
+
+always @(posedge iClk or negedge iReset)
+    if(!iReset) begin
+        oDat <= 0;
+    else begin
+        if(iWrEn) memdat[iAddr] <= iDat;
+        oDat <= memdat[oAddr];
+    end
+endmodule
+```
+
+5. 利用置位/复位触发器引脚
+
+为异步复位能力利用了可复位的触发器,逻辑函数按离散逻辑实现
+
+```verilog
+module setreset(
+    output reg oDat,
+    input iReset,iClk,
+    input iDat1,iDat2
+);
+
+always @(posedge iClk or negedge iReset)
+    if(!iReset) oDat <= 0;
+    else oDat <= iDat1 | iDat2;
+endmodule
+```
 
