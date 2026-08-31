@@ -833,15 +833,167 @@ endmodule
 以下的代码表示顶层实现:
 
 ```verilog
-module AES_Enc_core(
-    output [32*'Nb-1:0] oCiphertext, //OUTPUT Ciphertext
-    output oValid, // data at output is valid
-    output oKeysValid,
-    input iClk,iReset,
-    input [32*'Nb-1:0] iPlaintext, //INPUT Plaintext to be encrypted
-    input []
-)
+module AES_core(
+    output [32*'Nb-1:0]    oCiphertext, // output ciphertext
+    output                 oValid,      // data at output is valid
+    // signals that new key has been completely processed
+    output                 oKeysValid,
+    input                  iClk, iReset,
+    input [32*'Nb-1:0]     iPlaintext,  // input data to be encrypted
+    input [32*'Nk-1:0]     iKey,        // input cipher key
+    input                  iReady,      // valid data to encrypt
+    input                  iNewKey);    // signals new key is input
 
+    wire [32*'Nb-1:0]      wRoundKey1, wRoundKey2,
+                           wRoundKey3, wRoundKey4,
+                           wRoundKey5, wRoundKey6,
+                           wRoundKey7, wRoundKey8,
+                           wRoundKey9, wRoundKeyFinal,
+                           wRoundKeyInit;
+
+    wire [32*'Nb-1:0]      wBlockOut1, wBlockOut2,
+                           wBlockOut3, wBlockOut4,
+                           wBlockOut5, wBlockOut6,
+                           wBlockOut7, wBlockOut8,
+                           wBlockOut9, wBlockOutInit;
+
+    wire [32*'Nk-1:0]      wNkKeysInit;
+    wire [3:0]             wKeyIterInit;
+    wire [3:0]             wKeyIterModNkInit;
+    wire [3:0]             wKeyIterDivNkInit;
+    wire                   wValid1, wValid2, wValid3,
+
+    module AES_core(
+    output [32*'Nb-1:0]    oCiphertext, // output ciphertext
+    output                 oValid,      // data at output is valid
+    // signals that new key has been completely processed.
+    output                 oKeysValid,
+    input                  iClk, iReset,
+    input [32*'Nb-1:0]     iPlaintext,  // input data to be encrypted
+    input [32*'Nk-1:0]     iKey,        // input cipher key
+    input                  iReady,      // valid data to encrypt
+    input                  iNewKey);    // signals new key is input
+
+    wire [32*'Nb-1:0]      wRoundKey1, wRoundKey2,
+                           wRoundKey3, wRoundKey4,
+                           wRoundKey5, wRoundKey6,
+                           wRoundKey7, wRoundKey8,
+                           wRoundKey9, wRoundKeyFinal,
+                           wRoundKeyInit;
+
+    wire [32*'Nb-1:0]      wBlockOut1, wBlockOut2,
+                           wBlockOut3, wBlockOut4,
+                           wBlockOut5, wBlockOut6,
+                           wBlockOut7, wBlockOut8,
+                           wBlockOut9, wBlockOutFinal,
+                           wBlockOutInit;
+
+    wire [32*'Nk-1:0]      wNkKeysInit;
+    wire [3:0]             wKeyIterInit;
+    wire [3:0]             wKeyIterModNkInit;
+    wire [3:0]             wKeyIterDivNkInit;
+    wire                   wValid1, wValid2, wValid3,
+                           wValid4,
+                           wValid5, wValid6, wValid7,
+                           wValid8,
+                           wValid9, wValidFinal,
+                           wValidInit;
+
+    wire                   wNewKeyInit;
+    wire [128*('Nr+1)-1:0] wKeys; // complete set of round keys
+
+    // registered inputs
+    wire [32*'Nk-1:0]      wKeyReg;
+    wire                   wNewKeyReg, wReadyReg;
+    wire [127:0]           wPlaintextReg;
+
+    // register inputs
+    InputRegs InputRegs(
+        .iClk(iClk), .iReset(iReset),
+        .iKey(iKey),
+        .iNewKey(iNewKey),
+        .iPlaintext(iPlaintext),
+        .iReady(iReady), .oKey(wKeyReg),
+        .oNewKey(wNewKeyReg),
+        .oPlaintext(wPlaintextReg),
+        .oReady(wReadyReg));
+
+    // initial key expansion
+    KeyExpInit KeyExpInit(
+        .iClk(iClk), .iReset(iReset),
+        .iNkKeys(wKeyReg), .iNewKey(wNewKeyReg),
+        .oKeyIter(wKeyIterInit),
+        .oNewKey(wNewKeyInit),
+        .oKeyIterModNk(wKeyIterModNkInit),
+        .oNkKeys(wNkKeysInit),
+        .oKeyIterDivNk(wKeyIterDivNkInit));
+
+    // initial addition of round key
+    AddRoundKey InitialKey(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wPlaintextReg),
+        .iRoundKey(wRoundKeyInit),
+        .oBlockOut(wBlockOutInit),
+        .iReady(wReadyReg),
+        .oValid(wValidInit));
+
+    // Number of rounds is a function of key size (10, 12, or 14)
+
+    // Key expansion block
+    KeyExpansion KeyExpansion(
+        .iClk(iClk),
+        .iReset(iReset),
+        .iKeyIter(wKeyIterInit),
+        .iKeyIterModNk(wKeyIterModNkInit),
+        .iNkKeys(wNkKeysInit),
+        .iKeyIterDivNk(wKeyIterDivNkInit),
+        .iNewKey(wNewKeyInit),
+        .oKeys(wKeys), .oKeysValid(oKeysValid));
+
+    // round transformation blocks
+    Round R1(
+        .iClk(iClk), .iReset
+            (iReset),
+            .iBlockIn(wBlockOutInit),
+            .iRoundKey(wRoundKey1),
+            .oBlockOut(wBlockOut1),
+            .iReady(wValidInit),
+            .oValid(wValid1));
+
+    Round R9(
+        .iClk(iClk), .iReset
+            (iReset),
+            .iBlockIn(wBlockOut8),
+            .iRoundKey(wRoundKey9),
+            .oBlockOut(wBlockOut9),
+            .iReady(wValid8),
+            .oValid(wValid9));
+
+    // 10 rounds total
+    // Initial key addition
+    assign wRoundKeyFinal = wKeys[128*('Nr-7)-1:
+                    128*('Nr-8)];
+    // round key assignments
+    assign wRoundKey9      = wKeys[128*('Nr-6)-1: 128*('Nr-7)];
+    assign wRoundKey8      = wKeys[128*('Nr-5)-1: 128*('Nr-6)];
+    assign wRoundKey7      = wKeys[128*('Nr-4)-1: 128*('Nr-5)];
+    assign wRoundKey6      = wKeys[128*('Nr-3)-1: 128*('Nr-4)];
+    assign wRoundKey5      = wKeys[128*('Nr-2)-1: 128*('Nr-3)];
+    assign wRoundKey4      = wKeys[128*('Nr-1)-1: 128*('Nr-2)];
+    assign wRoundKey3      = wKeys[128*'Nr-1: 128*('Nr-1)];
+    assign wRoundKey2      = wKeys[128*('Nr+1)-1: 128*'Nr];
+
+    assign wRoundKey1      = wNkKeysInit[128-1:0];
+    assign wRoundKeyInit   = iKey[128-1:0];
+    FinalRound FinalRound(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wBlockOut9),
+        .iRoundKey(wRoundKeyFinal),
+        .oBlockOut(oCiphertext),
+        .iReady(wValid9), .oValid(oValid));
+
+endmodule
+```
 
 
 
