@@ -960,6 +960,7 @@ module AES_core(
             .iReady(wValidInit),
             .oValid(wValid1));
 
+ // ... (此处省略 R3, R4, R5, R6, R7, R8，逻辑与 R2 完全相同) ...
     Round R9(
         .iClk(iClk), .iReset
             (iReset),
@@ -1047,7 +1048,234 @@ D. 最终轮与输出
 
 意味着通过密钥展开函数的单个迭代可以与一个利用正在产生的密钥的轮次前面的轮次完全同步的发生,密钥展开式模块的时滞后等于轮模块的时滞
 
+密钥必须比轮数据完成早一个时钟周期,这是因为轮密钥对于轮密钥加模块定时异或操作到其最后的寄存器是必须的
 
+换言之,密钥展开模块的时钟4必须与相应的轮模块的时钟3同步
+
+第一个128位之后的密钥数据开始在第一个时钟周期上展开,而数据流水线在第二个时钟上开始,对于Nk = 4 的顶层实现具有如下代码；
+
+```verilog
+module AES_core(
+    output [32*'Nb-1:0]    oCiphertext, // output ciphertext
+    output                 oValid,      // data at output is valid
+    input                  iClk, iReset,
+    input [32*'Nb-1:0]     iPlaintext,  // input data to be encrypted
+    input [32*'Nk-1:0]     iKey,        // input cipher key
+    input                  iReady);     // valid data to encrypt
+
+    wire [32*'Nb-1:0]      wRoundKey1, wRoundKey2, wRoundKey3,
+                           wRoundKey4,
+                           wRoundKey5, wRoundKey6, wRoundKey7,
+                           wRoundKey8,
+                           wRoundKey9, wRoundKeyFinal,
+                           wRoundKeyInit;
+
+    wire [32*'Nb-1:0]      wBlockOut1, wBlockOut2, wBlockOut3,
+                           wBlockOut4,
+                           wBlockOut5, wBlockOut6, wBlockOut7,
+                           wBlockOut8,
+                           wBlockOut9, wBlockOutInit;
+
+    wire [32*'Nk-1:0]      wNkKeys1, wNkKeys2, wNkKeys3,
+                           wNkKeys4,
+                           wNkKeys5, wNkKeys6, wNkKeys7,
+                           wNkKeys8,
+                           wNkKeys9, wNkKeysFinal,
+                           wNkKeysInit;
+
+    wire [3:0]             wKeyIter1, wKeyIter2, wKeyIter3,
+                           wKeyIter4,
+                           wKeyIter5, wKeyIter6, wKeyIter7,
+                           wKeyIter8,
+                           wKeyIter9, wKeyIterFinal,
+                           wKeyIterInit;
+
+    wire [3:0]             wKeyIterModNk1, wKeyIterModNk2,
+                           wKeyIterModNk3,
+                           wKeyIterModNk4, wKeyIterModNk5,
+                           wKeyIterModNk6,
+                           wKeyIterModNk7, wKeyIterModNk8,
+                           wKeyIterModNk9,
+                           wKeyIterModNkFinal,
+                           wKeyIterModNkInit;
+        wire [3:0]             wKeyIterDivNk1, wKeyIterDivNk2,
+                           wKeyIterDivNk3,
+                           wKeyIterDivNk4, wKeyIterDivNk5,
+                           wKeyIterDivNk6,
+                           wKeyIterDivNk7, wKeyIterDivNk8,
+                           wKeyIterDivNk9,
+                           wKeyIterDivNkFinal,
+                           wKeyIterDivNkInit;
+
+    wire                   wValid1, wValid2, wValid3, wValid4,
+                           wValid5, wValid6, wValid7, wValid8,
+                           wValid9, wValidFinal, wValidInit;
+
+    // registered inputs
+    wire [32*'Nk-1:0]      wKeyReg;
+    wire                   wReadyReg;
+    wire [127:0]           wPlaintextReg;
+
+    // Initial key addition
+    assign wRoundKeyInit = wKeyReg[32*'Nk-1:32*'Nk-128];
+
+    // round key assignments
+    assign wRoundKey1      = wNkKeysInit[32*'Nb-1:0];
+    assign wRoundKey2      = wNkKeys1[32*'Nb-1:0];
+    assign wRoundKey3      = wNkKeys2[32*'Nb-1:0];
+    assign wRoundKey4      = wNkKeys3[32*'Nb-1:0];
+    assign wRoundKey5      = wNkKeys4[32*'Nb-1:0];
+    assign wRoundKey6      = wNkKeys5[32*'Nb-1:0];
+    assign wRoundKey7      = wNkKeys6[32*'Nb-1:0];
+    assign wRoundKey8      = wNkKeys7[32*'Nb-1:0];
+    assign wRoundKey9      = wNkKeys8[32*'Nb-1:0];
+
+        // register inputs
+    InputRegs InputRegs(
+        .iClk(iClk), .iReset(iReset),
+        .iKey(iKey),
+        .iPlaintext(iPlaintext),
+        .iReady(iReady), .oKey(wKeyReg),
+        .oPlaintext(wPlaintextReg),
+        .oReady(wReadyReg));
+
+    // initial key expansion
+    KeyExpInit KeyExpInit(
+        .iClk(iClk), .iReset(iReset),
+        .iNkKeys(wKeyReg),
+        .oKeyIter(wKeyIterInit),
+        .oKeyIterModNk(wKeyIterModNkInit),
+        .oNkKeys(wNkKeysInit),
+        .oKeyIterDivNk(wKeyIterDivNkInit));
+
+    // initial addition of round key
+    AddRoundKey InitialKey(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wPlaintextReg),
+        .iRoundKey(wRoundKeyInit),
+        .oBlockOut(wBlockOutInit),
+        .iReady(wReadyReg),
+        .oValid(wValidInit));
+
+    // Number of rounds is a function of key size (10, 12, or 14)
+
+    // Key expansion blocks
+    KeyExpBlock KeyExpBlock1(
+        .iClk(iClk), .iReset(iReset),
+        .iKeyIter(wKeyIterInit),
+        .iKeyIterModNk(wKeyIterModNkInit),
+        .iNkKeys(wNkKeysInit),
+        .iKeyIterDivNk(wKeyIterDivNkInit),
+        .oKeyIter(wKeyIter1),
+        .oKeyIterModNk(wKeyIterModNk1),
+        .oNkKeys(wNkKeys1),
+        .oKeyIterDivNk(wKeyIterDivNk1));
+
+    KeyExpBlock KeyExpBlock8(
+        .iClk(iClk), .iReset(iReset),
+        .iKeyIter(wKeyIter7),
+        .iKeyIterModNk(wKeyIterModNk7),
+        .iNkKeys(wNkKeys7),
+        .iKeyIterDivNk(wKeyIterDivNk7),
+        .oKeyIter(wKeyIter8),
+        .oKeyIterModNk(wKeyIter
+            ModNk8),
+        .oNkKeys(wNkKeys8),
+        .oKeyIterDivNk(wKeyIter
+            DivNk8));
+    
+    // round transformation blocks
+
+    Round R1(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wBlockOutInit),
+        .iRoundKey(wRoundKey1),
+        .oBlockOut(wBlockOut1),
+        .iReady(wValidInit),
+        .oValid(wValid1));
+    ...
+
+    Round R9(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wBlockOut8),
+        .iRoundKey(wRoundKey9),
+        .oBlockOut(wBlockOut9),
+        .iReady(wValid8),
+        .oValid(wValid9));
+
+    // 10 rounds total
+    assign wRoundKeyFinal = wNkKeys9[32*'Nb-1:0];
+    KeyExpBlock KeyExpBlock9(
+        .iClk(iClk), .iReset(iReset),
+        .iKeyIter(wKeyIter8),
+        .iKeyIterModNk
+            (wKeyIterModNk8),
+        .iNkKeys(wNkKeys8),
+        .iKeyIterDivNk
+            (wKeyIterDivNk8),
+        .oKeyIter(wKeyIter9),
+        .oKeyIterModNk
+            (wKeyIterModNk9),
+        .oNkKeys(wNkKeys9),
+        .oKeyIterDivNk(wKeyIter
+            DivNk9));
+
+    FinalRound FinalRound(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wBlockOut9),
+        .iRoundKey(wRoundKeyFinal),
+        .oBlockOut(oCiphertext),
+        .iReady(wValid9), .oValid
+            (oValid));
+
+endmodule
+```
+
+1. 核心架构特点：数据与密钥的同步流水线
+在这个设计中，密钥扩展（Key Expansion）不再是独立、快速生成所有轮密钥的模块，而是被拆分成了多个 `KeyExpBlock`，并且**与数据加密轮次（`Round`）一一串联**。
+*   **数据流向**：`InputRegs` -> `InitialKey` -> `R1` -> `...` -> `R9` -> `FinalRound`
+*   **密钥流向**：`KeyExpInit` -> `KeyExpBlock1` -> `...` -> `KeyExpBlock8` -> `KeyExpBlock9`
+这种设计的优点是**密钥生成与加密完全同步**，不需要庞大的寄存器阵列来存储所有的轮密钥，非常适合资源极度受限的 FPGA 或 ASIC 设计。
+
+2. 模块内部逻辑分块解析
+
+A. 输入锁存与初始密钥加
+*   **`InputRegs`**：对输入的明文 (`iPlaintext`) 和密钥 (`iKey`) 进行打拍（Register），保证流水线时序。
+*   **初始轮密钥加**：
+    *   `assign wRoundKeyInit = wKeyReg[32*'Nk-1:32*'Nk-128];`：直接从输入的完整密钥中提取前 128 位作为初始轮密钥。
+    *   `AddRoundKey InitialKey`：执行 AES 的第 0 轮操作（明文与初始轮密钥异或），输出 `wBlockOutInit`。
+
+B. 密钥扩展的级联链 (Key Expansion Chain)
+代码中例化了初始密钥扩展模块 `KeyExpInit`，以及后续的 `KeyExpBlock1`、`KeyExpBlock8`、`KeyExpBlock9`（中间部分用 `...` 省略）。
+*   每个 `KeyExpBlock` 接收上一级传来的迭代状态（`iKeyIter`, `iKeyIterModNk`, `iNkKeys`, `iKeyIterDivNk`）。
+*   经过一个时钟周期的计算后，输出更新后的状态（`oKeyIter`, `oNkKeys` 等）给下一级。
+*   这意味着，生成第 N 轮的密钥，正好需要 N 个时钟周期的延迟，完美匹配了数据经过 N 个 `Round` 模块的延迟。
+
+C. 轮密钥的分配逻辑 (Round Key Assignments)
+由于密钥是串行生成的，轮密钥的提取方式与集中式架构完全不同。代码通过 `assign` 语句，直接从**对应轮次的密钥扩展模块输出**中提取当前轮的 128 位密钥：
+```verilog
+assign wRoundKey1      = wNkKeysInit[32*'Nb-1:0]; // 第1轮密钥来自初始扩展
+assign wRoundKey2      = wNkKeys1[32*'Nb-1:0];    // 第2轮密钥来自 KeyExpBlock1
+assign wRoundKey3      = wNkKeys2[32*'Nb-1:0];    // 第3轮密钥来自 KeyExpBlock2
+// ... 以此类推 ...
+assign wRoundKey9      = wNkKeys8[32*'Nb-1:0];    // 第9轮密钥来自 KeyExpBlock8
+```
+这种“错位分配”是该架构最显著的代码特征。
+
+D. 数据加密流水线 (Round Transformation)
+*   **`Round R1`**：接收 `InitialKey` 的输出 `wBlockOutInit` 和 `wRoundKey1`，执行标准的 AES 轮变换（SubBytes, ShiftRows, MixColumns, AddRoundKey）。
+*   **`Round R9`**：接收上一级（R8）的输出 `wBlockOut8` 和 `wRoundKey9`。
+*   **`FinalRound`**：接收 `R9` 的输出，使用 `wRoundKeyFinal`（提取自 `KeyExpBlock9` 的输出 `wNkKeys9`）执行最后一轮变换（无 MixColumns），最终输出密文 `oCiphertext`。
+
+### 性能与面积
+
+1. LUTs:表示在FPGA内AES核消耗的逻辑利用率
+2. ASIC门:在ASIC中AES核消耗的逻辑门数量
+3. 最佳可能的流量:在最好条件下每秒可以处理的最大数据位的数目
+4. 最坏条件的流量:最坏条件指的由于展开新的密钥最大时延数量的情况
+
+
+## 高级设计
 
 
 
