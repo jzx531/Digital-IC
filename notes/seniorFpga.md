@@ -996,10 +996,56 @@ endmodule
 ```
 
 
+ 1. 模块架构与接口设计
+*   **顶层模块**：`AES_core` 是整个加密算法的顶层封装。
+*   **参数化设计**：
+    *   `'Nb` (Number of Blocks/Bytes)：AES 的块大小（固定为 128 位，即 4 个字）。
+    *   `'Nk` (Number of Keywords)：初始密钥的长度（128 位时为 4，256 位时为 8）。
+    *   `'Nr` (Number of Rounds)：加密轮数（128 位密钥为 10 轮，256 位为 14 轮）。
+*   **流水线接口 (握手协议)**：
+    *   输入端口包含 `iReady`（输入数据有效），输出端口包含 `oValid`（输出数据有效）。这种 Ready/Valid 握手机制是硬件流水线设计的标志，允许模块在每个时钟周期接收和输出新的数据块，同时保证数据处理的正确性。
+
+2. 内部核心逻辑划分
+模块内部通过子模块的例化（Instantiation）实现了 AES 算法的三个主要阶段：
+
+A. 输入预处理与初始密钥
+*   **`InputRegs` (输入寄存器)**：
+    用于锁存输入的明文 (`iPlaintext`)、密钥 (`iKey`) 和控制信号。在流水线设计中，第一步通常是将输入数据打入寄存器，以确保时钟周期的同步和时序收敛。
+*   **`KeyExpInit` (初始密钥扩展)**：
+    处理初始的密钥 (`wKeyReg`)，计算出初始的轮密钥 (`wNkKeysInit`) 以及用于后续复杂扩展的控制状态 (`wKeyIterInit` 等)。
+*   **`InitialKey` (轮密钥加 - 初始)**：
+    执行 AES 的第 0 轮操作（`AddRoundKey`）。将锁存的明文 (`wPlaintextReg`) 与初始轮密钥进行异或操作，并将结果 `wBlockOutInit` 送入流水线的第一级。
+
+B. 轮密钥生成 (Key Expansion Block)
+*   **`KeyExpansion` (轮密钥扩展核心)**：
+    这是一个核心计算单元。它利用初始扩展后的密钥和控制迭代计数器，连续执行子字节替换（SubWord）、循环左移（RotWord）、轮常数异或（Rcon）等操作，最终生成包含所有轮密钥的完整密钥表 `wKeys`。
+
+C. 加密流水线与轮密钥分配 (Round Transformation)
+这是整个模块的核心数据通路，数据像流水线一样逐级传递：
+*   **流水线阶段**：
+    代码中显式例化了第一级 `Round R1` 和最后一级 `Round R9`（对于 AES-128 来说，这是第 9 轮）。虽然中间的第 2 到第 8 级没有显示代码，但逻辑是相同的，它们构成了一条由 9 个完整 `Round` 模块组成的流水线。
+    *   每个 `Round` 模块包含：SubBytes -> ShiftRows -> MixColumns -> AddRoundKey。
+    *   上一级的输出 (`oBlockOut`) 直接连接到下一级的输入 (`iBlockIn`)。
+*   **轮密钥分配逻辑**：
+    通过 `assign` 语句，将 `KeyExpansion` 模块产生的总密钥表 `wKeys` 按照偏移量切分，分配给对应的轮次：
+    *   `wRoundKey1` 到 `wRoundKey9` 分别从 `wKeys` 中截取对应的 128 位数据。
+    *   `wRoundKeyFinal` 被分配给最终的轮次。
+
+D. 最终轮与输出
+*   **`FinalRound` (最终轮)**：
+    AES 算法规定最后一轮不需要 MixColumns 变换。`FinalRound` 模块只执行 SubBytes -> ShiftRows -> AddRoundKey，其输出 `oBlockOut` 即为最终的密文 `oCiphertext`。
 
 
+完全流水线结构
+完全流水线是指并行地运行于轮变换流水线的密钥展开式的结构,其中在此流水线相应的级在正确时间提供相互准确的信息
 
+换言之,对任何特定级和特定数据块的轮密钥只是一个时钟周期是有效的,并在那个时间被相应的轮次利用
 
+这个并行地发生在每个流水线级，因此唯一的密钥可以潜在地被每个数据块利用,没有根据时滞或等待状态的损失
+
+![alt text](fullstreamAES.png)
+
+意味着通过密钥展开函数的单个迭代可以与一个利用正在产生的密钥的轮次前面的轮次完全同步的发生,密钥展开式模块的时滞后等于轮模块的时滞
 
 
 
