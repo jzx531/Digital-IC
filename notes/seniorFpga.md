@@ -488,3 +488,368 @@ always @(posedge iClk or negedge iReset)
 endmodule
 ```
 
+**小结**
+
+*   折叠流水线可以优化在流水线级复制逻辑的流水线设计的面积。
+*   当共享逻辑比控制逻辑更大时，控制可以直接用来逻辑复用。
+*   对于面积是主要要求的紧凑设计，搜索在其他模块中有类似计数部件的资源，可以把他们放到层次上的全局位置，在多个功能范围之间共享。
+*   不正确的复位策略可以产生不必要的大的设计和抑制一些面积优化。
+*   优化的 FPGA 资源在不相容的复位分配到它时将不被利用，但利用一般的元件实现其功能，将占用更多的面积。
+*   DSPs 和其他多功能资源一般对复位策略的变化是不灵活的。
+*   不正确地复位一个 RAM 可能对面积有惊人的影响。
+*   利用置位/复位可能阻止一些组合逻辑的优化。
+*   当面积是考虑的关键时，尽可能避免利用置位和复位。
+
+
+## 功耗结构设计
+
+### 时钟控制
+
+在同步数字电路中降低动态功耗的最有效和广泛使用的技术是动态禁止在特定区域中的时钟,在数据流中这个区域不需要在特定级激活
+
+利用这个时钟拓扑,只要主时钟是激活的,所有的触发器和响应的组合逻辑就是激活的，在虚线框内的逻辑仅仅在时钟使能clock enable= 1才激活
+
+![alt text](clockenable.png)
+
+1. 时钟偏移
+
+![alt text](clockoffset.png)
+
+在第二个和第三个触发器级之间的情况是复杂的
+
+因为第二个和第三个触发器级之间时钟线上的延时,有效的时钟沿将不在同时出现,相反,第三个触发器上的有效时钟沿将延时一个数值dc
+
+2. 控制偏移
+
+FPGA提供的低偏移资源确保时钟信号将对所有时钟输入尽可能的匹配
+
+可以想到,通过选通门的延时加上布线延时将比通过逻辑的延时DL大,为了解决这个潜在问题,实现和分析工具必须给出一组约束,使得与通过选通项偏移有关的任何时序问题可以去除,然后在实现后的分析中适当地加以分析
+
+```verilog
+module clockgating(
+    output dataout,
+    input clk,datain,
+    input clockgate1
+);
+reg ff0,ff1,ff2;
+wire clk1;
+
+// clocks are disabled when gate is low
+assign clk1 = clk & clockgate1;
+assign dataout = ff2;
+always @(posedge clk)
+    ff0 <= datain;
+always @(posedge clk)
+    ff1 <= ff0;
+always @(posedge clk1)
+    ff2 <= ff1;
+endmodule
+```
+
+<mark> 时钟选通可以引起保持的冲突,可能或者不可能被实现工具校正 </mark>
+
+
+
+### 输入控制
+
+<mark> 为了使输入器件的功耗最小化,最小化驱动输入的信号上升和下降时间</mark>
+
+<mark> 总是端接不利用的输入缓冲器,从不让一个FPGA输入缓冲器悬空着</mark>
+
+### 减少供电电压
+
+降低FPGA电源的供电电压接近最小要求的电压,可以达到显著地节省功率
+
+降低这个电压也将减少系统的性能
+
+<mark>动态功耗随着核电压的平方减弱,但是降低电压对性能有负面的影响</mark>
+
+### 双沿触发触发器
+
+双沿触发的触发器提供在时钟的两个沿而不是一个沿上传播数据的机构,这允许设计者运行的时钟频率只是要求达到确定程度功能和性能的频率的一半
+
+```verilog
+module dualedge(
+    output reg dataout,
+    input clk,datain
+);
+
+reg ff0,ff1;
+always @(posedge clk)
+    ff0 <= datain;
+
+always @(posedge clk or negedge clk) begin
+    ff1 <= ff0;
+    dataout <= ff1;
+    end
+endmodule
+```
+
+注意如果双沿触发器是无效的,将添加多余的触发器和选通来仿真相应的功能
+这将完全失去利用双沿策略的目的,并在实现之后相应地分析
+
+双沿触发的触发器应该只在他们被提供作为基本元件时才利用
+
+### 修改终端
+
+在带总线的系统,漏开路的输出或要求端接的传输线通常是连接到输出引脚的电阻负载
+
+采用串行的端接没有稳态电流的消耗
+
+缺点是:
+
+* 从负载到端接电阻初始的反射
+* 在转换期间通过串联电阻有少量的衰减
+
+
+**总结**
+
+*   诸如何时钟使能触发器输入或全局时钟多路选择器等时钟控制资源应该在其有效的场合代替直接时钟选通来利用。
+*   时钟选通是减少动态功耗直接手段，但是在实现和时序分析中产生困难。
+*   对 FPGA 设计者，选通时钟引入新的时钟区域，并将产生困难。
+*   在 FPGA 中管理不好时钟偏移可以引起突发的故障。
+*   时钟选通可以引起保持的冲突，可能或不可能被实现工具校正。
+*   为了使输入器件的功耗最小化，应当使驱动输入的信号上升和下降时间最小化。
+*   总是端接不利用的输入缓冲器，从不让一个 FPGA 输入缓冲器悬空着。
+*   动态功耗随着核电压的平方减弱，但是降低电压对性能有负面的影响。
+*   双沿触发的触发器应该只在他们被提供作为基本元件时才利用。
+*   采用串行的端接没有稳态电流的消耗。
+
+
+## 设计实例: 高级加密标准
+
+### AES结构
+
+AES是对称的密钥密码,映射128位明文到128位密文的块
+
+并行地运行于数据通道的密钥表达式获取密码的密钥，为每个变换的轮产生一个唯一的密钥。令字 word = 32bit（位），Nk = 密钥尺寸/字尺寸（= 128, 192，或 256 / 32）。展开的密钥的第一个 Nk 字是用密码的密钥充满的，展开的密钥中每个子序列的 32 位字是前面的 32 位字和当前字前面的 32 位字的 Nk 字异或（XOR）。对于出现过 Nk 倍数的字，当前的字在异或操作之前经受一个变换，跟随着一个带轮常数的异或操作。这个变换是由一个轮排列组成，跟随着对 32 位字的全部四个字节的 8-byte 映射。轮常数由 FIPS 197 定义为由 [ x^(i-1), {00}, {00}, {00} ] 给出的数值，x^(i-1) 是 x 的幂，其中 x 作为在 GF (2^8) 有限域中 {02} 的标志。
+
+
+**高级加密标准（AES）**中**密钥扩展（Key Expansion）**算法的核心原理和计算过程。AES 是目前全球最广泛使用的对称加密算法。
+
+1. 基本概念与参数
+*   **并行运行于数据通道**：指的是密钥扩展过程可以与主加密数据通道的计算并行进行，提高效率。
+*   **字（Word）**：AES 算法中的基本计算单位，固定为 **32bit**（即4个字节）。
+*   **Nk**：代表初始密钥包含的字数。计算公式为 `密钥尺寸 / 字尺寸`。
+    *   128位密钥（AES-128）：Nk = 128 / 32 = **4**
+    *   192位密钥（AES-192）：Nk = 192 / 32 = **6**
+    *   256位密钥（AES-256）：Nk = 256 / 32 = **8**
+
+2. 密钥扩展的生成规则
+AES 加密是多轮运算（如 AES-128 需要 10 轮，每一轮都需要一个唯一的密钥）。密钥扩展的目的就是把一个较短的初始密钥，扩展成一系列用于每一轮加密的子密钥（轮密钥）。
+
+*   **初始化**：展开后的密钥的前 Nk 个字，直接填入原始的初始密钥。
+*   **后续字的生成规则**：
+    *   **一般规则**：第 `i` 个字 = 第 `i-1` 个字 XOR 第 `i-Nk` 个字。
+    *   **特殊规则（每 Nk 的倍数）**：当当前生成的字是第 Nk、2Nk、3Nk... 个字时，需要进行一次变换后再进行异或。
+
+3. 特殊变换（针对第 Nk 倍数个字的处理）
+当生成到第 Nk 倍数的字时，不能直接异或，需要先对前一个字进行如下三步变换：
+1.  **轮排列（RotWord）**：将字的4个字节循环左移一位。
+2.  **8-byte 映射（SubWord / S-Box）**：通过 S 盒（非线性查找表）对这4个字节进行逐一替换（文中所说的“8-byte映射”可能是翻译或表述上的习惯，实际上是对每个字节进行替换，因为 1 byte = 8 bit）。
+3.  **异或轮常数（Rcon）**：将上述结果与一个称为“轮常数”的值进行异或。
+    *   **轮常数的定义**：`[ x^(i-1), {00}, {00}, {00} ]`。这是一个字，只有第一个字节有值，后三个字节是 00。
+    *   **x 的幂（x^(i-1)）**：这里的 x 是有限域 **GF(2^8)** 中的一个特殊元素（标志为 {02}），它的幂次运算遵循特定的多项式模运算规则。
+
+```verilog
+module KeyExp1Enc(
+    //updated values to be passed to next iteration
+    output [3:0] oKeyIter,oKeyIterModNk,oKeyIterDivNk,
+    output [32 * 'Nk-1:0] oNkKeys,
+    input  iClk,iReset,
+    // represents total # of iterations and values mod Nk
+    input [3:0] iKeyIter,iKeyIterModNk,iKeyIterDivNk,
+    // the last Nk Keys generated in key expansion
+// The last Nk keys generated in key expansion
+input [32*'Nk-1:0]  iNkKeys);
+
+// updated values to be passed to next iteration
+reg [3:0]           oKeyIter, oKeyIterModNK,
+                    oKeyIterDivNK;
+reg [32*'Nk-1:0]    OldKeys;
+wire [31:0]         InterKey; // intermediate key value
+wire [32*'Nk-1:0]   oNkKeys;
+wire [31:0]         PrevKey, RotWord, SubWord,
+                    NewKeyWord;
+wire [31:0]         KeyWordNk;
+wire [31:0]         Rcon;
+
+assign PrevKey      =       iNkKeys[31:0]; // last word in key array
+                                                       
+
+assign KeyWordNk    =       OldKeys[32*'Nk-1:32*'Nk-32];
+
+// 1 byte cyclic permutation
+assign RotWord      =       {PrevKey[23:0], PrevKey[31:24]};
+// new key calculated in this round
+assign NewKeyWord = KeyWordNk ^ InterKey;
+
+// calculate new key set
+assign oNkKeys = {OldKeys[32*'Nk-33:0], NewKeyWord};
+
+// calculate Rcon over GF(2^8)
+assign Rcon         = iKeyIterDivNk == 8'h1 ? 32'h01000000 :
+                      iKeyIterDivNk == 8'h2 ? 32'h02000000 :
+                      iKeyIterDivNk == 8'h3 ? 32'h04000000 :
+                      iKeyIterDivNk == 8'h4 ? 32'h08000000 :
+                      iKeyIterDivNk == 8'h5 ? 32'h10000000 :
+                      iKeyIterDivNk == 8'h6 ? 32'h20000000 :
+                      iKeyIterDivNk == 8'h7 ? 32'h40000000 :
+                      iKeyIterDivNk == 8'h8 ? 32'h80000000 :
+                      iKeyIterDivNk == 8'h9 ? 32'h1b000000 :
+                      32'h36000000;
+
+
+SboxEnc SboxEnc0(.iPreMap(RotWord[31:24]),
+                          .oPostMap(SubWord[31:24]));
+SboxEnc SboxEnc1(.iPreMap(RotWord[23:16]),
+                          .oPostMap(SubWord[23:16]));
+SboxEnc SboxEnc2(.iPreMap(RotWord[15:8]),
+                          .oPostMap(SubWord[15:8]));
+SboxEnc SboxEnc3(.iPreMap(RotWord[7:0]),
+                          .oPostMap(SubWord[7:0]));
+
+`ifdef Nk8
+
+wire [31:0] SubWordNk8;
+
+// Substitution only when Nk = 8
+SboxEnc SboxEncNk8_0(.iPreMap(PrevKey[31:24]),
+                              .oPostMap(SubWordNk8[31:24]));
+SboxEnc SboxEncNk8_1(.iPreMap(PrevKey[23:16]),
+                              .oPostMap(SubWordNk8[23:16]));
+SboxEnc SboxEncNk8_2(.iPreMap(PrevKey[15:8]),
+                              .oPostMap(SubWordNk8[15:8]));
+SboxEnc SboxEncNk8_3(.iPreMap(PrevKey[7:0]),
+                              .oPostMap(SubWordNk8[7:0]));
+
+`endif
+
+always @(posedge iClk)
+if(!iReset) begin
+    oKeyIter           <= 0;
+    oKeyIterModNk      <= 0;
+    InterKey           <= 0;
+    oKeyIterDivNk      <= 0;
+    OldKeys            <= 0;
+end else begin
+    oKeyIter           <= iKeyIter + 1;
+    OldKeys            <= iNkKeys;
+
+// update "Key iteration mod Nk" for next iteration
+    if(iKeyIterModNk + 1 == 'Nk) begin
+        oKeyIterModNk  <= 0;
+        oKeyIterDivNk  <= iKeyIterDivNk+1;
+    end
+    else begin
+        oKeyIterModNk  <= iKeyIterModNk + 1;
+        oKeyIterDivNk  <= iKeyIterDivNk;
+    end
+
+    if(iKeyIterModNk == 0)
+        InterKey       <= SubWord ^ Rcon;
+`ifdef Nk8
+// an option only for Nk = 8
+    else if(iKeyIterModNk == 4)
+        InterKey       <= SubWordNk8;
+`endif
+    else
+        InterKey       <= PrevKey;
+end
+endmodule
+```
+代码解析：
+
+1. 模块接口：
+* 参数 'Nk：代表初始密钥包含的 32 位字（Word）的数量。例如 AES-128 为 4，AES-256 为 8。
+* iKeyIter, iKeyIterModNk, iKeyIterDivNk：当前的迭代计数器、迭代对 Nk 取模的值、以及迭代除以 Nk 的值。这些用于控制密钥扩展的进度。
+* iNkKeys:上一轮生成的 Nk 个密钥,作为当前计算的依赖输入。
+
+* oKeyIter, oKeyIterModNk, oKeyIterDivNk：更新后的迭代计数器，传递给下一个时钟周期。
+* oNkKeys: 当前周期计算得到的新的一组密钥
+
+2. 组合逻辑替换
+
+PrevKey：上一轮生成的密钥，用于计算当前轮的密钥。
+RotWord：将 PrevKey 的四个字节循环左移一位。
+SubWord：通过 S 盒对 RotWord 的四个字节进行替换。
+Rcon：轮常数，用于在特定轮次进行异或操作。对应AES标准中的GF(2^8)有限域中的幂次运算规则。
+
+NewKeyWord：当前轮的密钥，通过上一轮的密钥和当前轮的中间值进行异或操作。
+
+```verilog
+module RoundEnc(
+    output [32*'Nb-1:0]    oBlockOut,
+    output                 oValid,
+    input                  iClk, iReset,
+    input [32*'Nb-1:0]     iBlockIn, iRoundKey,
+    input                  iReady,
+    input [3:0]            iRound);
+
+    wire [32*'Nb-1:0] wSubOut, wShiftOut, wMixOut;
+    wire              wValidSub, wValidShift, wValidMix;
+
+    SubBytesEnc sub(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(iBlockIn),
+        .oBlockOut(wSubOut),
+        .iReady(iReady),
+        .oValid(wValidSub));
+
+    ShiftRowsEnc shift(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wSubOut), .oBlockOut(wShiftOut),
+        .iReady(wValidSub), .oValid(wValidShift));
+
+    MixColumnsEnc mixcolumn(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wShiftOut),
+        .oBlockOut(wMixOut),
+        .iReady(wValidShift),
+        .oValid(wValidMix),
+        .iRound(iRound));
+
+    AddRoundKeyEnc addroundkey(
+        .iClk(iClk), .iReset(iReset),
+        .iBlockIn(wMixOut),
+        .oBlockOut(oBlockOut),
+        .iRoundKey(iRoundKey),
+        .iReady(wValidMix),
+        .oValid(oValid));
+
+endmodule
+```
+
+字节代换可以使用一个8bit x 256 (2 ^ 8) 的查找表rom来实现
+
+紧缩结构
+
+进入的数据和密钥在初始轮模块中相加在一起,在进入加密环路之前,将结果寄存,按照规定的顺序,将数据加到字节代换,行间移位,多列变换和轮密钥加
+在每伦茨的结尾,新的数据被寄存，按照轮的次数重复这些操作
+
+![alt text](AEStight.png)
+
+
+以下的代码表示顶层实现:
+
+```verilog
+module AES_Enc_core(
+    output [32*'Nb-1:0] oCiphertext, //OUTPUT Ciphertext
+    output oValid, // data at output is valid
+    output oKeysValid,
+    input iClk,iReset,
+    input [32*'Nb-1:0] iPlaintext, //INPUT Plaintext to be encrypted
+    input []
+)
+
+
+
+
+
+
+
+
+
+
+
+
