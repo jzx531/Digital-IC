@@ -1386,3 +1386,152 @@ endcase
 end
 endmodule
 ```
+```verilog
+// AUTO-GENERATED CODE FROM SYNPLIFY DSP
+module FIR( clk, gReset, gEnable, rst, en, inp, outp);
+parameter inpBitWidth = 16;
+parameter inpFrac = 8;
+parameter coefBitWidth = 10;
+parameter coefFrac = 8;
+parameter dpBitWidth = 17;
+parameter dpFrac = 8;
+parameter outBitWidth = 17;
+parameter tapLen = 46;
+parameter extraLatency = 0;
+input clk;
+input gReset;
+input gEnable;
+input rst;
+input en;
+
+input [inpBitWidth-1:0] inp;
+output [outBitWidth-1:0] outp;
+wire signed [coefBitWidth-1:0] CoefArr [0:tapLen + 0 - 1];
+generate
+begin: CoefArrGen
+    assign CoefArr[0] = 10'b0000000000;
+    ...
+    assign CoefArr[45] = 10'b0000000000;
+end
+endgenerate
+wire signed [inpBitWidth-1:0] multInp;
+wire signed [coefBitWidth + inpBitWidth-1:0] multOuts
+    [0:tapLen-1];
+wire signed [coefBitWidth + inpBitWidth-1:0] multBufs1
+    [0:tapLen-1];
+wire signed [coefBitWidth + inpBitWidth-1:0] multBufs1pre
+    [0:tapLen-1];
+
+wire rstBuf;
+wire enBuf;
+reg signed [dpBitWidth-1:0] mem [0:tapLen-2];
+assign multInp = inp;
+generate
+    genvar i1;
+    for(i1=0; i1<=tapLen-1; i1=i1+1)
+    begin: multOuts_gen
+        assign multOuts[i1] = multBufs1[i1];
+    end
+endgenerate
+assign rstBuf = rst;
+assign enBuf = en;
+assign outp = multOuts[0] + mem[0];
+generate
+assign output = multOuts[0] + mem[0];
+generate
+
+genvar i2;
+for(i2=0; i2<=tapLen-1; i2=i2+1) begin: floop
+    assign multBufs1pre[i2] = multInp * CoefArr[i2];
+    assign multBufs1[i2] = multBufs1pre[i2] >>>
+                            (coefFrac+inpFrac-dpFrac);
+end
+endgenerate
+
+generate
+integer i3;
+begin: inner_floop
+    always @(posedge clk) begin
+        if( (rstBuf==1) || (gReset==1) ) begin
+            for(i3 = 0; i3 <= tapLen-2; i3=i3+1) begin
+                mem[i3] <= 0;
+            end
+        end // reset
+        else if( (enBuf==1) && (gEnable==1) ) begin
+            for(i3 = 0; i3 <= tapLen-3; i3=i3+1) begin
+                mem[i3] <= mem[i3+1] + multOuts[i3+1];
+            end
+            mem[tapLen-2] <= multOuts[tapLen-1];
+        end // enable
+    end // always
+end // inner_floop
+endgenerate
+endmodule
+```
+
+这段代码是由 EDA 工具（如 Synplify DSP）自动生成的**分布式算术（Distributed Arithmetic）FIR（有限脉冲响应）滤波器**的 Verilog 描述。
+
+从整体结构来看，它实现了一个 46 阶的 FIR 滤波器，并采用了**转置型（Transposed Form）**的流水线结构。下面为您进行深度解析：
+
+1. 参数与接口定义
+*   **位宽参数**：输入数据 16 位（含 8 位小数），滤波器系数 10 位（含 8 位小数），内部数据通路 17 位（含 8 位小数），输出 17 位。
+*   **滤波器长度**：`tapLen = 46`，即这是一个 46 抽头的滤波器。
+*   **控制信号**：
+    *   `clk`：系统时钟。
+    *   `gReset` / `rst`：全局复位与局部复位（高电平有效）。
+    *   `gEnable` / `en`：全局使能与局部使能（高电平有效）。
+*   **数据接口**：`inp`（输入数据），`outp`（滤波后的输出数据）。
+
+2. 核心架构解析
+
+A. 系数存储与乘法阵列（组合逻辑）
+```verilog
+wire signed [coefBitWidth-1:0] CoefArr [0:tapLen + 0 - 1];
+// ...
+assign multBufs1pre[i2] = multInp * CoefArr[i2];
+```
+*   系数被硬编码在 `CoefArr` 数组中（由于是工具自动生成，系数以常量形式存在，而非外部输入）。
+*   通过 `generate` 循环，**并行**展开了 46 个乘法器（`multInp * CoefArr[i2]`）。这是典型的分布式算术实现方式，用空间换时间。
+
+B. 定点数缩放（算术右移）
+```verilog
+assign multBufs1[i2] = multBufs1pre[i2] >>> (coefFrac+inpFrac-dpFrac);
+```
+*   乘法运算后，数据位宽会膨胀（16+10=26位）。
+*   这里使用**算术右移** `>>>` 进行截位和缩放。移位量为 `coefFrac + inpFrac - dpFrac` (8+8-8=8位)，用于对齐小数点，将结果映射回内部数据通路位宽（17位）。
+
+C. 转置型 FIR 累加器（时序逻辑）
+```verilog
+always @(posedge clk) begin
+    if( (rstBuf==1) || (gReset==1) ) begin
+        for(i3 = 0; i3 <= tapLen-2; i3=i3+1) begin
+            mem[i3] <= 0;
+        end
+    end 
+    else if( (enBuf==1) && (gEnable==1) ) begin
+        for(i3 = 0; i3 <= tapLen-3; i3=i3+1) begin
+            mem[i3] <= mem[i3+1] + multOuts[i3+1];
+        end
+        mem[tapLen-2] <= multOuts[tapLen-1];
+    end 
+end
+```
+这是整个滤波器的核心状态机/移位累加网络：
+*   **复位逻辑**：当复位有效时，清空所有内部寄存器 `mem`。
+*   **使能逻辑**：当使能有效时，执行**转置型 FIR 的移位累加操作**：
+    *   除了最后一个节点，每个节点 `mem[i3]` 的值更新为：下一个节点的值 `mem[i3+1]` 加上当前节点的乘法结果 `multOuts[i3+1]`。
+    *   最后一个节点 `mem[tapLen-2]` 直接锁存最后一个乘法器的结果 `multOuts[tapLen-1]`。
+*   这种结构无需显式的延迟线（Delay Line）来存储历史输入，而是将延迟和累加融合在反馈路径中，非常适合 FPGA 的 DSP 切片和流水线优化。
+
+D. 最终输出
+```verilog
+assign outp = multOuts[0] + mem[0];
+```
+*   最终的输出等于**第一个乘法器的结果** `multOuts[0]` 加上**第一个累加节点** `mem[0]` 的值。
+
+3. 代码中的瑕疵/注意点
+1.  **冗余赋值**：代码中存在 `assign outp = multOuts[0] + mem[0];`，紧接着又有一行 `assign output = multOuts[0] + mem[0];`。模块端口定义中并没有 `output` 这个信号，这行代码在综合时会被忽略或导致编译警告/错误（取决于仿真器或综合工具的严格程度）。
+2.  **符号截断风险**：`multBufs1pre` 是 26 位，右移 8 位后理论上需要 18 位才能完全无损表示，但赋值给了 17 位的 `multBufs1`。这里存在 1 位的截断。不过由于 FIR 滤波器的系数通常较小且存在正负抵消，实际工程中这种 1 位的截断通常不会引起严重溢出，但设计者需知晓此定点量化误差。
+
+
+
