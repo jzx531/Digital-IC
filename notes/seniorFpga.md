@@ -1280,5 +1280,109 @@ D. 数据加密流水线 (Round Transformation)
 通常情况,设计者直到综合完成之后才知道一个状态机编码是否对其实现是最佳的
 修改一个状态机编码很费事,并且通常情况下与状态机功能没有关系
 
+```verilog
+module shelflow(
+    output reg        multstart,
+    output reg [23:0] multdat,
+    output reg [23:0] multcoeff,
+    output reg        clearaccum,
+    output reg [23:0] U0,
+    input             CLK, RESET,
+    input [23:0]      iData,    // X[0]
+    input             iWriteStrobe, // X[0] is valid
+    input [23:0]      iALow, iCLow, // coeffs for low pass filter
+    input             multdone,
+    input [23:0]      accum);
 
+// define input/output samples
+reg [23:0] X0, X1, U1;
 
+// the registers that are multiplied together in mult24
+reg [2:0] state; // holds state for sequencing through mults
+
+parameter State0 = 0,
+          State1 = 1,
+          State2 = 2,
+          State3 = 3;
+
+always @(posedge CLK)
+if (!RESET) begin
+    X0         <= 0;
+    X1         <= 0;
+    U0         <= 0;
+    U1         <= 0;
+    multstart  <= 0;
+    multdat    <= 0;
+    multcoeff  <= 0;
+    state      <= State0;
+    clearaccum <= 0;
+end
+else begin
+    // do not process state machine if multiply is not done
+    case (state)
+        State0: begin
+            // idle state
+            if (iWriteStrobe) begin
+                // if a new sample has arrived
+                // shift samples
+                X0         <= iData;
+                X1         <= X0;
+                U1         <= U0;
+                multdat    <= iData;    // load mult
+                multcoeff  <= iALow;
+                multstart  <= 1;
+                clearaccum <= 1;        // clear accum
+                state      <= State1;
+            end
+        end
+else begin
+    multstart <= 0;
+end
+
+State1: begin
+    // A*X[0] is done, load A*X[1]
+    if(multdone) begin
+        multdat    <= X1;
+        multcoeff  <= iALow;
+        multstart  <= 1;
+        state      <= State2;
+    end
+    else begin
+        multstart   <= 0;
+        clearaccum  <= 0;
+    end
+end
+
+State2: begin
+    // A*X[1] is done, load C*U[1]
+    if(multdone) begin
+        multdat    <= U1;
+        multcoeff  <= iCLow;
+        multstart  <= 1;
+        state      <= State3;
+    end
+    else begin
+        multstart   <= 0;
+        clearaccum  <= 0;
+    end
+end
+
+State3: begin
+    // C*U[1] is done, load G*accum
+    // [RL-1] U0 <= accumsum;
+    if(multdone) begin
+        U0         <= accum;
+        state      <= State0;
+    end
+    else begin
+        multstart   <= 0;
+        clearaccum  <= 0;
+    end
+end
+
+default
+    state      <= State0;
+endcase
+end
+endmodule
+```
