@@ -95,7 +95,7 @@ end
 initial begin
   #2ns rstn<=1;
   #10ns rstn <= 0;
-//  #10ns rstn<=1;
+  #10ns rstn<=1;
 end
 
 // router dut(
