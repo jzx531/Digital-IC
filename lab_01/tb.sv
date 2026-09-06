@@ -9,9 +9,13 @@ module rt_stimulator(
   input [15:0] busy_n,
   input [15:0] frameo_n
 );
+//for debug purpose from waveform
+ typedef enum {DRV_RESET,DRV_IDLE,DRV_ADDR,DRV_PAD,DRV_DATA} drv_state_t;
+ drv_state_t state;
 
   initial begin:drive_reset_proc
     @(negedge reset_n);
+    state <= DRV_RESET;
     din <= 0;
     frame_n <= 1;
     valid_n <= 1;
@@ -20,23 +24,25 @@ module rt_stimulator(
   // drive channel0 - channel 15（din[0:15)）]
   bit [3:0] addr;
   byte unsigned data[];
-  initial begin : drive_chn10_proc
+   initial begin : drive_chn10_proc
     @(negedge reset_n);
     repeat(10) @(posedge clock);
-    addr = 3;
+    addr = 4'd3;
     data = '{8'h33,8'h77};
     //drive address phase
     for (int i = 0; i < 4; i++) begin
       @(posedge clock);
+      state<= DRV_ADDR;
       din[0] <= addr[i];
-      valid_n[0] <= 1'b0; // TODO: check valid bit 0/1 later
+      valid_n[0] <= 1'b1; // TODO: check valid bit 0/1 later
       frame_n[0] <= 1'b0;
     end
     //drive data phase
     for(int i = 0; i < 4; i++) begin
       @(posedge clock);
+      state <= DRV_PAD;
       din[0] <= 1;
-      valid_n[0] <= 1'b0; // TODO: check valid bit 0/1 later
+      valid_n[0] <= 1'b1; // TODO: check valid bit 0/1 later
       frame_n[0] <= 1'b0;
     end
 
@@ -44,6 +50,7 @@ module rt_stimulator(
     foreach(data[id]) begin
       for(int i = 0; i < 8; i++) begin
         @(posedge clock);
+        state <= DRV_DATA;
         din[0] <= data[id][i];
         valid_n[0] <= 1'b0; // TODO: check valid bit 0/1 later
         if(id == data.size()-1 && i == 7) begin
@@ -58,6 +65,7 @@ module rt_stimulator(
 
     //drive idle phase
     @(posedge clock);
+    state <= DRV_IDLE;
     din[0]<=0;
     valid_n[0] <= 1'b1;
     frame_n[0] <= 1'b1;
