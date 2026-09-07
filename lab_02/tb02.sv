@@ -13,37 +13,42 @@ module rt_stimulator(
  typedef enum {DRV_RESET,DRV_IDLE,DRV_ADDR,DRV_PAD,DRV_DATA} drv_state_t;
  drv_state_t state;
 
-  initial begin:drive_reset_proc
+  // initial begin:drive_reset_proc
+ task drive_reset;
     @(negedge reset_n);
     state <= DRV_RESET;
     din <= 0;
-    frame_n <= 1;
-    valid_n <= 1;
-  end
+    frame_n <= '1;
+    valid_n <= '1;
+ endtask
+  // end
 
   // drive channel0 - channel 15（din[0:15)）]
   bit [3:0] addr;
   byte unsigned data[];
-   initial begin : drive_chn10_proc
+  //  initial begin : drive_chn10_proc
+  task drive_chn10(bit[3:0] saddr,bit[3:0] daddr,byte unsigned data[]);
     @(negedge reset_n);
     repeat(10) @(posedge clock);
-    addr = 4'd3;
-    data = '{8'h33,8'h77};
+
+    // addr = 4'd3;
+    // data = '{8'h33,8'h77};
+
     //drive address phase
     for (int i = 0; i < 4; i++) begin
       @(posedge clock);
       state<= DRV_ADDR;
-      din[0] <= addr[i];
-      valid_n[0] <= 1'b1; // TODO: check valid bit 0/1 later
-      frame_n[0] <= 1'b0;
+      din[saddr] <= daddr[i];
+      valid_n[saddr] <= 1'b1; // TODO: check valid bit 0/1 later
+      frame_n[saddr] <= 1'b0;
     end
     //drive data phase
     for(int i = 0; i < 4; i++) begin
       @(posedge clock);
       state <= DRV_PAD;
-      din[0] <= 1;
-      valid_n[0] <= 1'b1; // TODO: check valid bit 0/1 later
-      frame_n[0] <= 1'b0;
+      din[saddr] <= 1;
+      valid_n[saddr] <= 1'b1; // TODO: check valid bit 0/1 later
+      frame_n[saddr] <= 1'b0;
     end
 
     //drive data phase
@@ -51,12 +56,12 @@ module rt_stimulator(
       for(int i = 0; i < 8; i++) begin
         @(posedge clock);
         state <= DRV_DATA;
-        din[0] <= data[id][i];
-        valid_n[0] <= 1'b0; // TODO: check valid bit 0/1 later
+        din[saddr] <= data[id][i];
+        valid_n[saddr] <= 1'b0; // TODO: check valid bit 0/1 later
         if(id == data.size()-1 && i == 7) begin
-          frame_n[0] <= 1'b1;
+          frame_n[saddr] <= 1'b1;
         end else begin
-          frame_n[0] <= 1'b0;
+          frame_n[saddr] <= 1'b0;
         end
 
         // frame_n[0] <= (id == data.size()-1 && i == 7)? 1'b1 : 1'b0; // TODO: check valid bit 0/1 later
@@ -69,6 +74,21 @@ module rt_stimulator(
     din[0]<=0;
     valid_n[0] <= 1'b1;
     frame_n[0] <= 1'b1;
+  endtask
+  // end
+
+  initial begin:drive_reset_proc;
+    drive_reset();
+  end
+
+  initial begin:drive__proc;
+    // drive_chn10(.addr(3),.data({8'h33,8'h77}));
+    drive_chn10(1,3,'{8'h33,8'h77});
+    $display("chnl3 completed");
+    drive_chn10(4,6,'{8'h44,8'h55});
+    $display("chnl2 completed");
+    drive_chn10(7,9,'{8'h55,8'h66});
+    $display("chnl4 completed");
   end
 
 endmodule
