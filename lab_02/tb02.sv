@@ -26,14 +26,13 @@ module rt_stimulator(
   // drive channel0 - channel 15（din[0:15)）]
   bit [3:0] addr;
   byte unsigned data[];
+  bit [1:0] drv_done;
   //  initial begin : drive_chn10_proc
-  task drive_chn10(bit[3:0] saddr,bit[3:0] daddr,byte unsigned data[]);
-    @(negedge reset_n);
-    repeat(10) @(posedge clock);
-
+  task automatic drive_chn1(bit[3:0] saddr,bit[3:0] daddr,byte unsigned data[]);
     // addr = 4'd3;
     // data = '{8'h33,8'h77};
 
+    $display("chnl%d started addr = %d", saddr, daddr);
     //drive address phase
     for (int i = 0; i < 4; i++) begin
       @(posedge clock);
@@ -74,6 +73,8 @@ module rt_stimulator(
     din[0]<=0;
     valid_n[0] <= 1'b1;
     frame_n[0] <= 1'b1;
+
+    $display("chnl%d started addr = %d", saddr, daddr);
   endtask
   // end
 
@@ -81,14 +82,29 @@ module rt_stimulator(
     drive_reset();
   end
 
-  initial begin:drive__proc;
+  // stop simulation as soon as both drive processes have completed
+  always @(drv_done) begin
+    if (drv_done == 2'b11) $finish;
+  end
+
+  initial begin:drive_chnl0_proc;
     // drive_chn10(.addr(3),.data({8'h33,8'h77}));
-    drive_chn10(1,3,'{8'h33,8'h77});
-    $display("chnl3 completed");
-    drive_chn10(4,6,'{8'h44,8'h55});
+    @(negedge reset_n);
+    repeat(10) @(posedge clock);
+    drive_chn1(0,3,'{8'h33,8'h77});
+    $display("chnl0 completed");
+    drive_chn1(0,6,'{8'h44,8'h55});
     $display("chnl2 completed");
-    drive_chn10(7,9,'{8'h55,8'h66});
-    $display("chnl4 completed");
+    drv_done[0] = 1'b1;
+  end
+
+  initial begin:drive_chnl1_proc;
+    // drive_chn10(.addr(3),.data({8'h33,8'h77}));
+    @(negedge reset_n);
+    repeat(10) @(posedge clock);
+    drive_chn1(1,5,'{8'h33,8'h77,8'h88});
+    $display("chnl1 completed");
+    drv_done[1] = 1'b1;
   end
 
 endmodule
