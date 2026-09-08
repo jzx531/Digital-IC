@@ -69,3 +69,15 @@ module tb5;
     end
 endmodule
 
+module tb6;
+    initial begin
+        int arr [4:0];
+        int dyn = '{1,1,1,1,5};
+        $display("arr contents: %d",$size(arr,1));
+        $display("dyn contents: %d",$size(dyn,1));
+    end
+endmodule
+
+
+
+
