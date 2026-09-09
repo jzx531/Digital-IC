@@ -205,9 +205,9 @@ module rt_stimulator(
         wait(src_chnl_status[p.src] == -1);
     endtask
 
-    function automatic set_src_chnl_avail(rt_packet_t p);
+    task automatic set_src_chnl_avail(rt_packet_t p);
       src_chnl_status[p.src] = -1;
-    endfunction
+    endtask
   /*
   initial begin:drive_chnl1_proc;
     // drive_chn10(.addr(3),.data({8'h33,8'h77}));
@@ -218,6 +218,60 @@ module rt_stimulator(
     drv_done[1] = 1'b1;
   end
     */
+
+endmodule
+
+module rt_monitor(rt_interface intf);
+
+  rt_packet_t in_pkts[16][$];
+  rt_packet_t out_pkts[16][$];
+
+  initial begin : mon_chnl_in_proc
+    foreach(in_pkts[i]) begin
+      automatic int chid = i;
+      fork
+        mon_chnl_in(chid);
+      join_none
+    end
+  end
+
+  task automatic mon_chnl_in(bit [3:0] schid);
+    rt_packet_t pkt;
+    forever begin
+      pkt.src = schid;
+      // monitor specific channel-in data and put it into the queue
+      @(negedge intf.frame_n[schid]);
+      for(int i = 0; i < 4; i++) begin
+        @(negedge intf.clock);
+        pkt.dst[i] = intf.din[schid];
+      end
+      // pass pad phase
+      repeat(5) @(negedge intf.clock);
+      // monitor data phase
+      do begin
+        pkt.data =  new[pkt.data.size + 1] (pkt.data);
+        for(int i = 0; i < 8 ; i++) begin
+          @(negedge intf.clock);
+          pkt.data[pkt.data.size -1][i] = intf.din[schid];
+        end
+      end while(!intf.frame_n[schid]);
+      in_pkts[schid].push_back(pkt);
+      $display("[Monitor] in_pkt[%d] = %p trans finished", schid, pkt);
+    end
+  endtask
+
+  initial begin : mon_chnl_out_proc
+    foreach(out_pkts[i]) begin
+      automatic int chid = i;
+      fork
+        mon_chnl_Out(chid);
+      join_none
+    end
+  end
+
+  task  automatic mon_chnl_Out(bit [3:0] schid);
+  // monitor specific channel-out data and put it into the queue
+  endtask
 
 endmodule
 
@@ -271,6 +325,10 @@ router dut(
 );
 
 rt_stimulator stim(
+  intf
+);
+
+rt_monitor mon(
   intf
 );
 
