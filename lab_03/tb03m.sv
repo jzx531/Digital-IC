@@ -4,6 +4,32 @@ typedef struct{
   bit [7:0] data[];
 }rt_packet_t;
 
+interface rt_interface;
+  logic clock;
+  logic reset_n;
+  logic [15:0] din;
+  logic [15:0] frame_n;
+  logic [15:0] valid_n;
+  logic [15:0] dout;
+  logic [15:0] valido_n;
+  logic [15:0] busy_n;
+  logic [15:0] frameo_n;
+
+  // stimulus side: drives inputs, observes outputs
+  modport stim (
+    input  clock, reset_n,
+    input  dout, valido_n, busy_n, frameo_n,
+    output din, frame_n, valid_n
+  );
+
+  // router side (reference; router is instantiated with scalar pins)
+  modport dut (
+    input  clock, reset_n,
+    input  din, frame_n, valid_n,
+    output dout, valido_n, busy_n, frameo_n
+  );
+endinterface
+
 module rt_generator;
   rt_packet_t pkts[$];
 
@@ -50,6 +76,7 @@ module rt_generator;
 endmodule
 
 module rt_stimulator(
+  /*
   input clock,
   input reset_n,
   output reg [15:0] din,
@@ -59,6 +86,8 @@ module rt_stimulator(
   input [15:0] valido_n,
   input [15:0] busy_n,
   input [15:0] frameo_n
+  */
+  rt_interface.stim intf
 );
 //for debug purpose from waveform
  typedef enum {DRV_RESET,DRV_IDLE,DRV_ADDR,DRV_PAD,DRV_DATA} drv_state_t;
@@ -73,11 +102,11 @@ module rt_stimulator(
 
   // initial begin:drive_reset_proc
  task drive_reset;
-    @(negedge reset_n);
+    @(negedge intf.reset_n);
     state <= DRV_RESET;
-    din <= 0;
-    frame_n <= '1;
-    valid_n <= '1;
+    intf.din <= 0;
+    intf.frame_n <= '1;
+    intf.valid_n <= '1;
  endtask
   // end
 
@@ -94,32 +123,32 @@ module rt_stimulator(
     $display("chnl%d started addr = %d", saddr, daddr);
     //drive address phase
     for (int i = 0; i < 4; i++) begin
-      @(posedge clock);
+      @(posedge intf.clock);
       state<= DRV_ADDR;
-      din[saddr] <= daddr[i];
-      valid_n[saddr] <= 1'b1; // TODO: check valid bit 0/1 later
-      frame_n[saddr] <= 1'b0;
+      intf.din[saddr] <= daddr[i];
+      intf.valid_n[saddr] <= 1'b1; // TODO: check valid bit 0/1 later
+      intf.frame_n[saddr] <= 1'b0;
     end
     //drive data phase
     for(int i = 0; i < 4; i++) begin
-      @(posedge clock);
+      @(posedge intf.clock);
       state <= DRV_PAD;
-      din[saddr] <= 1;
-      valid_n[saddr] <= 1'b1; // TODO: check valid bit 0/1 later
-      frame_n[saddr] <= 1'b0;
+      intf.din[saddr] <= 1;
+      intf.valid_n[saddr] <= 1'b1; // TODO: check valid bit 0/1 later
+      intf.frame_n[saddr] <= 1'b0;
     end
 
     //drive data phase
     foreach(data[id]) begin
       for(int i = 0; i < 8; i++) begin
-        @(posedge clock);
+        @(posedge intf.clock);
         state <= DRV_DATA;
-        din[saddr] <= data[id][i];
-        valid_n[saddr] <= 1'b0; // TODO: check valid bit 0/1 later
+        intf.din[saddr] <= data[id][i];
+        intf.valid_n[saddr] <= 1'b0; // TODO: check valid bit 0/1 later
         if(id == data.size()-1 && i == 7) begin
-          frame_n[saddr] <= 1'b1;
+          intf.frame_n[saddr] <= 1'b1;
         end else begin
-          frame_n[saddr] <= 1'b0;
+          intf.frame_n[saddr] <= 1'b0;
         end
 
         // frame_n[0] <= (id == data.size()-1 && i == 7)? 1'b1 : 1'b0; // TODO: check valid bit 0/1 later
@@ -127,11 +156,11 @@ module rt_stimulator(
     end
 
     //drive idle phase
-    @(posedge clock);
+    @(posedge intf.clock);
     state <= DRV_IDLE;
-    din[0]<=0;
-    valid_n[0] <= 1'b1;
-    frame_n[0] <= 1'b1;
+    intf.din[0]<=0;
+    intf.valid_n[0] <= 1'b1;
+    intf.frame_n[0] <= 1'b1;
 
     $display("chnl%d started addr = %d", saddr, daddr);
   endtask
@@ -150,11 +179,11 @@ module rt_stimulator(
   initial begin:drive_chnl0_proc;
     // drive_chn10(.addr(3),.data({8'h33,8'h77}));
     
-    @(negedge reset_n);
-    repeat(10) @(posedge clock);
+    @(negedge intf.reset_n);
+    repeat(10) @(posedge intf.clock);
 
     forever begin
-      // automatic rt_packet_t pf;
+      automatic rt_packet_t pf;
       wait(pkt.size() > 0);
       pf = pkt.pop_front();
       
@@ -200,10 +229,6 @@ module tb;
 
 logic clk, rstn;
 
-logic [15:0] din, frame_n, valid_n;
-
-logic [15:0] dout, valido_n, busy_n, frameo_n;
- 
 //generate clock
 initial begin
   clk <= 0;
@@ -229,16 +254,24 @@ end
 //   .frameo_n(frameo_n)
 // );
 
+rt_interface intf();
+assign intf.clock = clk;
+assign intf.reset_n = rstn;
+
 router dut(
-  .reset_n(rstn),
-  .clock(clk),
-  .*
+  .reset_n(intf.reset_n),
+  .clock(intf.clock),
+  .din(intf.din),
+  .frame_n(intf.frame_n),
+  .valid_n(intf.valid_n),
+  .dout(intf.dout),
+  .valido_n(intf.valido_n),
+  .busy_n(intf.busy_n),
+  .frameo_n(intf.frameo_n)
 );
 
 rt_stimulator stim(
-  .clock(clk),
-  .reset_n(rstn),
-  .*
+  intf
 );
 
 rt_generator gen();
