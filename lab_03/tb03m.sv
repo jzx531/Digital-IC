@@ -231,6 +231,7 @@ module rt_monitor(rt_interface intf);
       automatic int chid = i;
       fork
         mon_chnl_in(chid);
+        mon_chnl_Out(chid);
       join_none
     end
   end
@@ -238,6 +239,8 @@ module rt_monitor(rt_interface intf);
   task automatic mon_chnl_in(bit [3:0] schid);
     rt_packet_t pkt;
     forever begin
+      // clear content for the same struct variable
+      pkt.data.delete();
       pkt.src = schid;
       // monitor specific channel-in data and put it into the queue
       @(negedge intf.frame_n[schid]);
@@ -246,7 +249,7 @@ module rt_monitor(rt_interface intf);
         pkt.dst[i] = intf.din[schid];
       end
       // pass pad phase
-      repeat(5) @(negedge intf.clock);
+      repeat(4) @(negedge intf.clock);
       // monitor data phase
       do begin
         pkt.data =  new[pkt.data.size + 1] (pkt.data);
@@ -256,10 +259,11 @@ module rt_monitor(rt_interface intf);
         end
       end while(!intf.frame_n[schid]);
       in_pkts[schid].push_back(pkt);
-      $display("[Monitor] in_pkt[%d] = %p trans finished", schid, pkt);
+      $display("[Monitor] chnl_in in_pkt[%d] = %p trans finished", schid, pkt);
     end
   endtask
 
+  /*
   initial begin : mon_chnl_out_proc
     foreach(out_pkts[i]) begin
       automatic int chid = i;
@@ -267,11 +271,65 @@ module rt_monitor(rt_interface intf);
         mon_chnl_Out(chid);
       join_none
     end
-  end
+  end*/
 
+    
+    task  automatic mon_chnl_Out(bit [3:0] schid);
+  // monitor specific channel-out data and put it into the queue
+    rt_packet_t pkt;
+    forever begin
+      pkt.data.delete();
+      pkt.src = 0;
+      pkt.dst = schid;
+      @(negedge intf.frameo_n[schid]);
+      do begin
+        pkt.data = new [pkt.data.size + 1](pkt.data);
+        for(int i = 0; i < 8; i++) begin
+          @(negedge intf.clock iff !intf.valido_n[schid]);
+          pkt.data[pkt.data.size -1][i] = intf.dout[schid];
+        end
+      end while(!intf.frameo_n[schid]);
+      out_pkts[schid].push_back(pkt);
+      $display("[Monitor] chnl_out out_pkt[%d] = %p trans finished", schid, pkt);
+    end
+  endtask
+
+  /*
   task  automatic mon_chnl_Out(bit [3:0] schid);
   // monitor specific channel-out data and put it into the queue
+    rt_packet_t pkt;
+    forever begin
+      bit [7:0] cur;
+      int bidx = 0;
+      pkt.data.delete();
+      pkt.src = 0;
+      pkt.dst = schid;
+      @(negedge intf.frameo_n[schid]);
+      $display("[Monitor] chnl_out frame start on %0d", schid);
+      forever begin
+        @(posedge intf.clock);
+        if (intf.valido_n[schid] == 1'b0) begin
+          cur[bidx] = intf.dout[schid];
+          bidx++;
+          if (bidx == 8) begin
+            pkt.data = new [pkt.data.size + 1](pkt.data);
+            pkt.data[pkt.data.size - 1] = cur;
+            bidx = 0;
+          end
+        end
+        if (intf.frameo_n[schid] == 1'b1) begin
+          if (bidx != 0) begin
+            pkt.data = new [pkt.data.size + 1](pkt.data);
+            pkt.data[pkt.data.size - 1] = cur;
+          end
+          out_pkts[schid].push_back(pkt);
+          $display("[Monitor] chnl_out out_pkt[%d] = %p trans finished", schid, pkt);
+          break;
+        end
+      end
+    end
   endtask
+  */
 
 endmodule
 
