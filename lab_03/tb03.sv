@@ -25,17 +25,24 @@ module rt_generator;
       return '{src:0,dst:0,data:'{}};
     end
   endfunction
-  */
+ 
 
   function bit get_pkt(output rt_packet_t p);
-    if(pkts.size() > 0)
+    if(pkts.size() > 0) begin
       p = pkts.pop_front();
       return 1;
+    end
     else begin
       $display("No packet available");
       return 0;
     end
-  endfunction
+  endfunction 
+    */
+
+  task get_pkt(output rt_packet_t p);
+    wait(pkts.size() > 0)
+      p = pkts.pop_front();
+  endtask
 
   function void gen_pkt(int src = -1, int dst = -1);
   endfunction
@@ -58,6 +65,10 @@ module rt_stimulator(
  drv_state_t state;
 
  rt_packet_t pkt[$];
+
+  function void put_pkt(rt_packet_t p);
+    pkt.push_back(p);
+  endfunction
 
   // initial begin:drive_reset_proc
  task drive_reset;
@@ -134,15 +145,16 @@ module rt_stimulator(
     if (drv_done == 2'b11) $finish;
   end
 
+  rt_packet_t p;
   initial begin:drive_chnl0_proc;
     // drive_chn10(.addr(3),.data({8'h33,8'h77}));
-    rt_packet_t p;
+    
     @(negedge reset_n);
     repeat(10) @(posedge clock);
 
     forever begin
-      wait(pkts.size() > 0);
-      p = pkts.pop_front();
+      wait(pkt.size() > 0);
+      p = pkt.pop_front();
       drive_chn1(p.src,p.dst,p.data);
     end
 
@@ -153,6 +165,7 @@ module rt_stimulator(
     drv_done[0] = 1'b1;
   end
 
+  /*
   initial begin:drive_chnl1_proc;
     // drive_chn10(.addr(3),.data({8'h33,8'h77}));
     @(negedge reset_n);
@@ -161,6 +174,7 @@ module rt_stimulator(
     $display("chnl1 completed");
     drv_done[1] = 1'b1;
   end
+    */
 
 endmodule
 
@@ -216,5 +230,19 @@ rt_stimulator stim(
 rt_generator gen();
 
 //generate and transmit packet
+initial begin : generate_proc
+  rt_packet_t p ;
+  p = '{src:0,dst:1,data:{8'h33,8'h77,8'h88}};
+  gen.put_pkt(p);
+  gen.put_pkt('{src:0,dst:2,data:{8'h44,8'h55}});
+end
+
+initial begin : transmit_proc
+  rt_packet_t p;
+  forever begin
+     gen.get_pkt(p);
+     stim.put_pkt(p);
+  end
+end
 
 endmodule
