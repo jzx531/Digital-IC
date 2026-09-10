@@ -23,6 +23,22 @@ class rt_packet;
       sprint = {sprint, $sformatf("data[%0d] = %0d \n", i, this.data[i])};
     end
   endfunction
+
+  function bit compare(rt_packet p);
+    compare = 1'b0;
+    if (p == null) begin
+      return compare;
+    end
+    if (src != p.src || dst != p.dst || data.size() != p.data.size()) begin
+      return compare;
+    end
+    foreach (data[i]) begin
+      if (data[i] != p.data[i]) begin
+        return compare;
+      end
+    end
+    compare = 1'b1;
+  endfunction
 endclass
 // }rt_packet;
 
@@ -50,9 +66,15 @@ interface rt_interface;
     input  din, frame_n, valid_n,
     output dout, valido_n, busy_n, frameo_n
   );
+
+  modport mon (
+    input clock, reset_n,
+    input din, frame_n, valid_n,
+    input dout, valido_n, busy_n, frameo_n
+  );
 endinterface
 
-module rt_generator;
+class rt_generator;
   rt_packet pkts[$];
 
   // task gen_pkts(bit [3:0] src , bit [3:0] dst,bit[7:0] data[]);
@@ -64,28 +86,7 @@ module rt_generator;
     pkts.push_back(p);
   endfunction
 
-  /*
-  function rt_packet get_pkt();
-    if(pkts.size() > 0)
-      return pkts.pop_front();
-    else begin
-      $display("No packet available");
-      return '{src:0,dst:0,data:'{}};
-    end
-  endfunction
- 
 
-  function bit get_pkt(output rt_packet p);
-    if(pkts.size() > 0) begin
-      p = pkts.pop_front();
-      return 1;
-    end
-    else begin
-      $display("No packet available");
-      return 0;
-    end
-  endfunction 
-    */
 
   task get_pkt(output rt_packet p);
     wait(pkts.size() > 0)
@@ -95,24 +96,16 @@ module rt_generator;
   function void gen_pkt(int src = -1, int dst = -1);
   endfunction
 
-endmodule
+  task run();
+    // TODO: generate packets
+  endtask
+
+endclass
 
 // module rt_stimulator(
 class rt_stimulator;
-  /*
-  input clock,
-  input reset_n,
-  output reg [15:0] din,
-  output reg [15:0] frame_n,
-  output reg [15:0] valid_n,
-  input [15:0] dout,
-  input [15:0] valido_n,
-  input [15:0] busy_n,
-  input [15:0] frameo_n
-  */
-  // rt_interface.stim intf
-// );
-  virtual rt_interface intf;
+
+  virtual rt_interface.stim intf;
 //for debug purpose from waveform
  typedef enum {DRV_RESET,DRV_IDLE,DRV_ADDR,DRV_PAD,DRV_DATA} drv_state_t;
  drv_state_t state;
@@ -126,11 +119,13 @@ class rt_stimulator;
 
   // initial begin:drive_reset_proc
  task drive_reset;
-    @(negedge intf.reset_n);
-    state <= DRV_RESET;
-    intf.din <= 0;
-    intf.frame_n <= '1;
-    intf.valid_n <= '1;
+  forever begin
+      @(negedge intf.reset_n);
+      state <= DRV_RESET;
+      intf.din <= 0;
+      intf.frame_n <= '1;
+      intf.valid_n <= '1;
+  end
  endtask
   // end
 
@@ -141,7 +136,7 @@ class rt_stimulator;
   bit [1:0] drv_done;
   //  initial begin : drive_chn10_proc
   // task automatic drive_chn1(bit[3:0] saddr,bit[3:0] daddr,byte unsigned data[]);
-  task automatic drive_chn1(rt_packet p);
+  task automatic drive_chn1_proc(rt_packet p);
     // addr = 4'd3;
     // data = '{8'h33,8'h77};
 
@@ -191,18 +186,17 @@ class rt_stimulator;
   endtask
   // end
 
-  initial begin:drive_reset_proc;
+task run();
+  fork
     drive_reset();
-  end
+    drive_chnl();
+  join_none
+endtask
 
-  // stop simulation as soon as both drive processes have completed
-  always @(drv_done) begin
-    if (drv_done == 2'b11) $finish;
-  end
+
 
   // rt_packet p;
-  initial begin:drive_chnl0_proc;
-    // drive_chn10(.addr(3),.data({8'h33,8'h77}));
+task drive_chnl();
     
     @(negedge intf.reset_n);
     repeat(10) @(posedge intf.clock);
@@ -216,14 +210,14 @@ class rt_stimulator;
         // automatic rt_packet pf = p;
           wait_src_chnl_avail(pf);
           // drive_chn1(pf.src,pf.dst,pf.data);
-          drive_chn1(pf);
+          drive_chn1_proc(pf);
           // wait_src_chnl_avail(pf);
           set_src_chnl_avail(pf);
         end
       join_none
     end
     drv_done[0] = 1'b1;
-  end
+  endtask
 
     task automatic wait_src_chnl_avail(rt_packet p);
       if(!src_chnl_status.exists(p.src))
@@ -235,26 +229,17 @@ class rt_stimulator;
     task automatic set_src_chnl_avail(rt_packet p);
       src_chnl_status[p.src] = -1;
     endtask
-  /*
-  initial begin:drive_chnl1_proc;
-    // drive_chn10(.addr(3),.data({8'h33,8'h77}));
-    @(negedge reset_n);
-    repeat(10) @(posedge clock);
-    drive_chn1(1,5,'{8'h33,8'h77,8'h88});
-    $display("chnl1 completed");
-    drv_done[1] = 1'b1;
-  end
-    */
 
 endclass
 // endmodule
 
-module rt_monitor(rt_interface intf);
+class rt_monitor;
+  virtual rt_interface.mon intf;
 
   rt_packet in_pkts[16][$];
   rt_packet out_pkts[16][$];
 
-  initial begin : mon_chnl_in_proc
+  task mon_chnls;
     foreach(in_pkts[i]) begin
       automatic int chid = i;
       fork
@@ -262,10 +247,16 @@ module rt_monitor(rt_interface intf);
         mon_chnl_Out(chid);
       join_none
     end
-  end
+  endtask
 
-  task automatic mon_chnl_in(bit [3:0] schid);
-    rt_packet pkt;
+  task run();
+    fork
+      mon_chnls();
+    join_none
+  endtask
+
+  task  mon_chnl_in(bit [3:0] schid);
+    automatic rt_packet pkt;
     forever begin
       // clear content for the same struct variable
       pkt = new();
@@ -292,20 +283,10 @@ module rt_monitor(rt_interface intf);
     end
   endtask
 
-  /*
-  initial begin : mon_chnl_out_proc
-    foreach(out_pkts[i]) begin
-      automatic int chid = i;
-      fork
-        mon_chnl_Out(chid);
-      join_none
-    end
-  end*/
-
     
-    task  automatic mon_chnl_Out(bit [3:0] schid);
+    task   mon_chnl_Out(bit [3:0] schid);
   // monitor specific channel-out data and put it into the queue
-    rt_packet pkt;
+    automatic rt_packet pkt;
     forever begin
       pkt = new();
       // pkt.data.delete();
@@ -324,45 +305,70 @@ module rt_monitor(rt_interface intf);
     end
   endtask
 
-  /*
-  task  automatic mon_chnl_Out(bit [3:0] schid);
-  // monitor specific channel-out data and put it into the queue
+endclass
+
+
+class rt_checker;
+
+int unsigned compare_count;
+int unsigned error_count;
+
+  rt_packet exp_out_pkts[16][$];
+  rt_monitor mon;
+
+  task run();
+  // TODO: check packets
+    foreach(exp_out_pkts[i]) begin
+      automatic int id = i;
+      fork
+        do_routing(id);
+        do_compare(id);
+      join_none
+    end
+  endtask
+
+  task do_routing(bit [3:0] id);
+  // do routing
     rt_packet pkt;
     forever begin
-      bit [7:0] cur;
-      int bidx = 0;
-      pkt = new();
-      // pkt.data.delete();
-      pkt.src = 0;
-      pkt.dst = schid;
-      @(negedge intf.frameo_n[schid]);
-      $display("[Monitor] chnl_out frame start on %0d", schid);
-      forever begin
-        @(posedge intf.clock);
-        if (intf.valido_n[schid] == 1'b0) begin
-          cur[bidx] = intf.dout[schid];
-          bidx++;
-          if (bidx == 8) begin
-            pkt.data = new [pkt.data.size() + 1](pkt.data);
-            pkt.data[pkt.data.size() - 1] = cur;
-            bidx = 0;
-          end
-        end
-        if (intf.frameo_n[schid] == 1'b1) begin
-          if (bidx != 0) begin
-            pkt.data = new [pkt.data.size() + 1](pkt.data);
-            pkt.data[pkt.data.size() - 1] = cur;
-          end
-          out_pkts[schid].push_back(pkt);
-          $display("[Monitor] chnl_out out_pkt[%d] = %p trans finished", schid, pkt);
-          break;
-        end
+      wait(mon.in_pkts[id].size() > 0);
+      pkt = mon.in_pkts[id].pop_front();
+      exp_out_pkts[pkt.dst].push_back(pkt);
+    end
+  endtask
+
+  task do_compare(bit [3:0] id);
+    rt_packet exp_pkt;
+    rt_packet out_pkt;
+    forever begin
+      wait(mon.out_pkts[id].size() > 0 && exp_out_pkts[id].size() > 0);
+      out_pkt = mon.out_pkts[id].pop_front();
+      exp_pkt = exp_out_pkts[id].pop_front();
+      if(exp_pkt.compare(out_pkt)) begin
+        $display("[Checker] chnl_out exp_pkt[%d] = %p == out_pkt[%d] = %p", id, exp_pkt, id, out_pkt);
+      end else begin
+        $display("[Checker] chnl_out exp_pkt[%d] = %p != out_pkt[%d] = %p", id, exp_pkt, id, out_pkt);
+        error_count++;
+      end
+      compare_count++;
+      if(compare_count >= 100) begin
+        do_report();
+        compare_count = 0;
+        error_count = 0;
       end
     end
   endtask
-  */
 
-endmodule
+  function void do_report();
+    if(!error_count) begin
+      $display("[Checker] no error found");
+    end
+    else begin
+      $display("[Checker] total compare count = %d, error count = %d", compare_count, error_count);
+    end
+  endfunction
+
+endclass
 
 module rt_test_top;
 endmodule
@@ -385,17 +391,7 @@ initial begin
   #10ns rstn<=1;
 end
 
-// router dut(
-//   .reset_n(rstn),
-//   .clock(clk),
-//   .din(din),
-//   .frame_n(frame_n),
-//   .valid_n(valid_n),
-//   .dout(dout),
-//   .valido_n(valido_n),
-//   .busy_n(busy_n),
-//   .frameo_n(frameo_n)
-// );
+
 
 rt_interface intf();
 assign intf.clock = clk;
@@ -417,26 +413,33 @@ router dut(
 rt_stimulator stim;
 
 
-rt_stimulator stim(
-  intf
-);
+rt_monitor mon;
 
-rt_monitor mon(
-  intf
-);
+rt_generator gen;
 
-rt_generator gen();
+rt_checker chk;
 
 initial begin : inst_proc
   stim = new();
+  gen = new();
+  mon = new();
+  chk = new();
   stim.intf = intf;
+  mon.intf = intf;
+  chk.mon = mon;
+  fork 
+    stim.run();
+    gen.run();
+    mon.run();
+    chk.run();
+  join_none
 end
 
 
 //generate and transmit packet
 initial begin : generate_proc
   rt_packet p ;
-  #0// wait for test components instantiated
+  #0; // wait for test components instantiated
   // p/pkt 是 handle；new() 是创建新对象；每个 packet/transaction 要独立保存时，就必须重新 new()。
   p = new();
   p.set_members(0,1,'{8'h33,8'h77,8'h88});
@@ -455,7 +458,7 @@ end
 
 initial begin : transmit_proc
   rt_packet p;
-  #0// wait for test components instantiated
+  #0; // wait for test components instantiated
   forever begin
      gen.get_pkt(p);
      stim.put_pkt(p);
