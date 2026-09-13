@@ -1,3 +1,4 @@
+package rt_test_pkg;
 // typedef struct{
 class rt_packet;
   bit [3:0] src;
@@ -41,38 +42,6 @@ class rt_packet;
   endfunction
 endclass
 // }rt_packet;
-
-interface rt_interface;
-  logic clock;
-  logic reset_n;
-  logic [15:0] din;
-  logic [15:0] frame_n;
-  logic [15:0] valid_n;
-  logic [15:0] dout;
-  logic [15:0] valido_n;
-  logic [15:0] busy_n;
-  logic [15:0] frameo_n;
-
-  // stimulus side: drives inputs, observes outputs
-  modport stim (
-    input  clock, reset_n,
-    input  dout, valido_n, busy_n, frameo_n,
-    output din, frame_n, valid_n
-  );
-
-  // router side (reference; router is instantiated with scalar pins)
-  modport dut (
-    input  clock, reset_n,
-    input  din, frame_n, valid_n,
-    output dout, valido_n, busy_n, frameo_n
-  );
-
-  modport mon (
-    input clock, reset_n,
-    input din, frame_n, valid_n,
-    input dout, valido_n, busy_n, frameo_n
-  );
-endinterface
 
 class rt_generator;
   rt_packet pkts[$];
@@ -315,6 +284,7 @@ int unsigned error_count;
 
   rt_packet exp_out_pkts[16][$];
   rt_monitor mon;
+  // bit check_data_buffer; // check if data buffer is empty
 
   task run();
   // TODO: check packets
@@ -351,88 +321,38 @@ int unsigned error_count;
         error_count++;
       end
       compare_count++;
-      if(compare_count >= 100) begin
-        do_report();
-        compare_count = 0;
-        error_count = 0;
-      end
+      // if(compare_count >= 100) begin
+      //   do_report();
+      //   compare_count = 0;
+      //   error_count = 0;
+      // end
     end
   endtask
 
-  function void do_report();
-    if(!error_count) begin
-      $display("[Checker] no error found");
+  function void do_report(string name = "rt_checker");
+    if(!error_count && check_data_buffer() ) begin
+      $display("[Checker] %s no error found", name);
     end
     else begin
-      $display("[Checker] total compare count = %d, error count = %d", compare_count, error_count);
+      $display("[Checker] %s total compare count = %d, error count = %d", name, compare_count, error_count);
     end
   endfunction
 
+  function bit check_data_buffer();
+     check_data_buffer = 1;
+     foreach(exp_out_pkts[id]) begin
+        if(exp_out_pkts[id].size != 0) begin
+          check_data_buffer = 0; // if any data buffer is not empty, return false
+          $display("[Checker] chnl_out exp_pkt[%d] data buffer is not empty(with size = %d)", id, exp_out_pkts[id].size); // if any data buffer is not empty, return false
+        end
+        if(mon.out_pkts[id].size != 0) begin
+          check_data_buffer = 0; // if any data buffer is not empty, return false
+          $display("[Checker] chnl_out out_pkt[%d] data buffer is not empty(with size = %d)", id, mon.out_pkts[id].size); // if any data buffer is not empty, return false
+        end
+     end
+  endfunction
+
 endclass
-
-module rt_test_top;
-endmodule
-
-
-module tb;
-
-logic clk, rstn;
-
-//generate clock
-initial begin
-  clk <= 0;
-  forever #5ns clk<=~clk;
-end
-
-//generate reset
-initial begin : rst_proc
-  #2ns rstn<=1;
-  #10ns rstn <= 0;
-  #10ns rstn<=1;
-end
-
-
-
-rt_interface intf();
-assign intf.clock = clk;
-assign intf.reset_n = rstn;
-
-router dut(
-  .reset_n(intf.reset_n),
-  .clock(intf.clock),
-  .din(intf.din),
-  .frame_n(intf.frame_n),
-  .valid_n(intf.valid_n),
-  .dout(intf.dout),
-  .valido_n(intf.valido_n),
-  .busy_n(intf.busy_n),
-  .frameo_n(intf.frameo_n)
-);
-
-// 例化
-rt_stimulator stim;
-
-rt_monitor mon;
-
-rt_generator gen;
-
-rt_checker chk;
-
-initial begin : inst_proc
-  stim = new();
-  gen = new();
-  mon = new();
-  chk = new();
-  stim.intf = intf;
-  mon.intf = intf;
-  chk.mon = mon;
-  fork 
-    stim.run();
-    gen.run();
-    mon.run();
-    chk.run();
-  join_none
-end
 
 class rt_env;
   rt_stimulator stim;
@@ -467,11 +387,14 @@ class rt_env;
           stim.put_pkt(p);
         end
       end
-
     join_none
-
-    
   endtask
+
+  function void report(string name = "rt_env");
+  //report stage
+  //TODO: report stage
+    chk.do_report(name);
+  endfunction
 
 // report stage
 
@@ -479,22 +402,39 @@ endclass
 
 class rt_base_test;
   rt_env env;
+  bit gen_trans_done = 0;
+  int unsigned test_drain_time_us = 1;
+  string name;
 
-  function new(virtual rt_interface intf);
+  function new(virtual rt_interface intf,string name = "rt_base_t");
     env = new(intf);
+    this.name = name; // set name
   endfunction
 
   task run();
     fork
       env.run();
+      this.report(); // report stage
     join_none
+  endtask
+
+  task report();
+    wait(gen_trans_done == 1'b1); // wait for gen_trans_done); // wait for gen_trans_done
+    env.report(); // report stage
+  endtask
+
+  task automatic set_trans_done(bit done = 1);
+    gen_trans_done = done;
+    #(test_drain_time_us * 1us);
+    env.report(this.name);
+    $finish(); // terminate the current test
   endtask
 endclass
 
 
 class rt_single_ch_test extends rt_base_test;
-  function new(virtual rt_interface intf);
-    super.new(intf);
+  function new(virtual rt_interface intf,string name = "rt_single_ch_test");
+    super.new(intf,name);
   endfunction
 
   task run();
@@ -506,12 +446,13 @@ class rt_single_ch_test extends rt_base_test;
     p = new();
     p.set_members(0,2,'{8'h44,8'h55});
     env.gen.put_pkt(p);
+    set_trans_done(); // gen_trans_done
   endtask
 endclass
 
 class rt_two_ch_test extends rt_base_test;
-  function new(virtual rt_interface intf);
-    super.new(intf);
+  function new(virtual rt_interface intf,string name = "rt_two_ch_test");
+    super.new(intf,name);
   endfunction
 
   task run();
@@ -526,19 +467,20 @@ class rt_two_ch_test extends rt_base_test;
     p = new();
     p.set_members(4,7,'{8'h66,8'h99});
     env.gen.put_pkt(p);
+    set_trans_done(); // gen_trans_done
   endtask
 
 endclass
 
 class rt_two_ch_same_chnout_test extends rt_two_ch_test;
-  function new(virtual rt_interface intf);
-    super.new(intf);
+  function new(virtual rt_interface intf,string name = "rt_two_ch_same_chnout_test");
+    super.new(intf,name);
   endfunction
 endclass
 
 class rt_multi_ch_test extends rt_base_test;
-  function new(virtual rt_interface intf);
-    super.new(intf);
+  function new(virtual rt_interface intf,string name = "rt_multi_ch_test");
+    super.new(intf,name);
   endfunction
 
   task run();
@@ -553,32 +495,14 @@ class rt_multi_ch_test extends rt_base_test;
     p = new();
     p.set_members(4,7,'{8'h66,8'h99});
     env.gen.put_pkt(p);
+    set_trans_done(); // gen_trans_done
   endtask
 endclass
 
 class rt_full_ch_test extends rt_multi_ch_test;
-  function new(virtual rt_interface intf);
-    super.new(intf);
+  function new(virtual rt_interface intf,string name = "rt_full_ch_test");
+    super.new(intf,name);
   endfunction
 endclass
 
-rt_single_ch_test single_ch_test;
-rt_multi_ch_test multi_ch_test;
-initial begin : inst_init_proc
-  // single_ch_test = new(intf);
-  // single_ch_test.run();
-  multi_ch_test = new(intf);
-  multi_ch_test.run();
-end
-
-
-// initial begin : transmit_proc
-//   rt_packet p;
-//   #0; // wait for test components instantiated
-//   forever begin
-//      gen.get_pkt(p);
-//      stim.put_pkt(p);
-//   end
-// end
-
-endmodule
+endpackage
