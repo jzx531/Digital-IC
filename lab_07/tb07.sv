@@ -1,0 +1,147 @@
+interface rt_interface;
+  logic clock;
+  logic reset_n;
+  logic [15:0] din;
+  logic [15:0] frame_n;
+  logic [15:0] valid_n;
+  logic [15:0] dout;
+  logic [15:0] valido_n;
+  logic [15:0] busy_n;
+  logic [15:0] frameo_n;
+
+  // stimulus side: drives inputs, observes outputs
+  modport stim (
+    input  clock, reset_n,
+    input  dout, valido_n, busy_n, frameo_n,
+    output din, frame_n, valid_n
+  );
+
+  // router side (reference; router is instantiated with scalar pins)
+  modport dut (
+    input  clock, reset_n,
+    input  din, frame_n, valid_n,
+    output dout, valido_n, busy_n, frameo_n
+  );
+
+  modport mon (
+    input clock, reset_n,
+    input din, frame_n, valid_n,
+    input dout, valido_n, busy_n, frameo_n
+  );
+endinterface
+
+
+module rt_test_top;
+endmodule
+
+
+module tb;
+
+import rt_rand_pkg::*; // import package
+
+logic clk, rstn;
+
+//generate clock
+initial begin
+  clk <= 0;
+  forever #5ns clk<=~clk;
+end
+
+//generate reset
+initial begin : rst_proc
+  #2ns rstn<=1;
+  #10ns rstn <= 0;
+  #10ns rstn<=1;
+end
+
+
+
+rt_interface intf();
+assign intf.clock = clk;
+assign intf.reset_n = rstn;
+
+router dut(
+  .reset_n(intf.reset_n),
+  .clock(intf.clock),
+  .din(intf.din),
+  .frame_n(intf.frame_n),
+  .valid_n(intf.valid_n),
+  .dout(intf.dout),
+  .valido_n(intf.valido_n),
+  .busy_n(intf.busy_n),
+  .frameo_n(intf.frameo_n)
+);
+
+// 例化
+rt_stimulator stim;
+
+rt_monitor mon;
+
+rt_generator gen;
+
+rt_checker chk;
+
+// initial begin : inst_proc
+//   stim = new();
+//   gen = new();
+//   mon = new();
+//   chk = new();
+//   stim.intf = intf;
+//   mon.intf = intf;
+//   chk.mon = mon;
+//   fork 
+//     stim.run();
+//     gen.run();
+//     mon.run();
+//     chk.run();
+//   join_none
+// end
+
+
+
+rt_single_ch_test single_ch_test;
+rt_multi_ch_test multi_ch_test;
+rt_two_ch_test two_ch_test;
+rt_base_test tests[string];
+initial begin : inst_init_proc
+  string name;
+  single_ch_test = new(intf);
+  multi_ch_test = new(intf);
+  two_ch_test = new(intf);
+
+  tests["single_ch_test"] = single_ch_test;
+  tests["multi_ch_test"] = multi_ch_test;
+  tests["two_ch_test"] = two_ch_test;
+
+  if($value$plusargs("TESTNAME=%s",name)) begin
+    if(tests.exists(name)) begin
+      // tests[name].run();
+      // case (name)
+      //  "single_ch_test":
+      //   single_ch_test.run();
+      //  "multi_ch_test":
+      //   multi_ch_test.run();
+      // default
+      //   $display("Test name %s not found",name); // if test name not found, print error message
+      // endcase
+      if(tests.exists(name)) begin
+        tests[name].run();
+      end
+      else begin
+        $display("Test name %s not found",name); // if test name not found, print error message
+      end
+    end
+    else begin
+      $display("Test name %s not found",name); // if test name not found, print error message
+    end
+  end
+  else begin
+    // $fatal("No test name specified");
+    tests["single_ch_test"].run();
+    // multi_ch_test.run();
+  end
+
+end
+
+
+endmodule
