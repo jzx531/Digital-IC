@@ -267,11 +267,35 @@ task drive_chnl();
 endclass
 // endmodule
 
+//covergroup
+// covergroup rt_cg_src_chnl_to_dest_chnl @(rt_packet p);
+covergroup rt_cg_src_to_dst (int id) with function sample(rt_packet p);
+  option.name = $sformatf("source to destination coverage[%0d]", id);
+  option.per_instance = 1;
+
+  SRC : coverpoint p.src {
+    bins src_channels[] = {[0:15]};
+  }
+
+  DEST : coverpoint p.dst {
+    bins dst_channels[] = {[0:15]};
+  }
+
+  SRC_X_DEST : cross SRC, DEST;
+endgroup
+
 class rt_monitor;
   virtual rt_interface.mon intf;
 
   rt_packet in_pkts[16][$];
   rt_packet out_pkts[16][$];
+  rt_cg_src_to_dst cg_src_chnl_to_dest_chnl[16];
+
+  function new();
+    foreach(cg_src_chnl_to_dest_chnl[i])begin
+      cg_src_chnl_to_dest_chnl[i] = new(i);
+    end
+  endfunction
 
   task mon_chnls;
     foreach(in_pkts[i]) begin
@@ -314,6 +338,8 @@ class rt_monitor;
       end while(!intf.frame_n[schid]);
       in_pkts[schid].push_back(pkt);
       $display("[Monitor] chnl_in in_pkt[%d] = %p trans finished", schid, pkt);
+      // coverage sampling
+      cg_src_chnl_to_dest_chnl[schid].sample(pkt);
     end
   endtask
 
