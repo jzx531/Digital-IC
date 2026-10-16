@@ -105,7 +105,7 @@ assign apb_read   = apb_access && !PWRITE;
 // PKT_MEM 仅接受 0x040~0x05C 范围内的 32-bit 对齐地址。
 assign pkt_mem_addr_valid = (PADDR >= ADDR_PKT_MEM_BASE) &&
                             (PADDR <= ADDR_PKT_MEM_LAST) &&
-                            (PADDR[1:0] == 2'b00);
+                            (PADDR[1:0] == 2'b00); //四字节对齐
 
 // 所有已定义 CSR 均允许读取，包括 RO/W1P/RW1C 字段。
 assign csr_read_addr_valid = (PADDR == ADDR_CTRL)         ||
